@@ -84,7 +84,7 @@ export const FoodItemCard: React.FC<FoodItemCardProps> = ({
                 onPress={() => onSlider(item.id)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.actionBtnText}>⚖️  Adjust Amount</Text>
+                <Text style={styles.actionBtnText}>Adjust Amount</Text>
               </TouchableOpacity>
             )}
             {onDelete && (
@@ -114,9 +114,9 @@ function getDaysRemaining(expirationDate: string): number {
 
 function getStorageLabel(location: string): string {
   const map: Record<string, string> = {
-    freezer:   '❄️ Freezer',
-    chiller:   '🧊 Chiller',
-    room_temp: '🌡️ Room Temp',
+    freezer:   'Freezer',
+    chiller:   'Chiller',
+    room_temp: 'Room Temp',
   };
   return map[location] ?? location;
 }

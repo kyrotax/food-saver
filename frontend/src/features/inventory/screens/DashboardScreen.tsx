@@ -1,24 +1,64 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
-  View, Text, FlatList, StyleSheet, RefreshControl,
-  TouchableOpacity, ActivityIndicator, Alert, ScrollView,
+  View, Text, StyleSheet, ScrollView, RefreshControl,
+  TouchableOpacity, ActivityIndicator, Alert, Platform,
 } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { useInventoryStore } from '@features/inventory/store/inventoryStore';
-import { useAuthStore }      from '@features/auth/store/authStore';
-import { FoodItemCard }      from '@features/inventory/components/FoodItemCard';
+import { useInventoryStore, FoodItem } from '@features/inventory/store/inventoryStore';
+import { useAuthStore } from '@features/auth/store/authStore';
 import { ConsumptionSlider } from '@features/inventory/components/ConsumptionSlider';
-import { Colors, Typography, Spacing, BorderRadius, Shadows } from '@app/theme/theme';
+
+// ─── Color Tokens (Home palette — white-first, matches Fridge Check) ────────
+const HC = {
+  bg:            '#FFFFFF',
+  surface:       '#F8FAF8',
+  softGreen:     '#EAF5EE',
+  primary:       '#3A9B68',
+  primaryDark:   '#2F8F5B',
+  border:        '#E7EDE7',
+  textPrimary:   '#1F2A24',
+  textSecondary: '#6F7D73',
+  textMuted:     '#A3B0A7',
+  warning:       '#F6B84B',
+  warningBg:     '#FEF7E6',
+  urgent:        '#E75D5D',
+  urgentBg:      '#FDEDED',
+  safe:          '#3A9B68',
+  safeBg:        '#EAF5EE',
+  white:         '#FFFFFF',
+  cardShadow:    '#1F2A24',
+};
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+function getDaysRemaining(expirationDate: string): number {
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const exp = new Date(expirationDate); exp.setHours(0, 0, 0, 0);
+  return Math.round((exp.getTime() - now.getTime()) / 86400000);
+}
+
+function expiryText(d: number): string {
+  if (d <= 0) return 'Expires today';
+  if (d === 1) return 'Expires tomorrow';
+  return `Expires in ${d} days`;
+}
+
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
 
 /**
- * DashboardScreen — Warm Kitchen Companion Home Screen
- * - Friendly greeting header (no Exit button)
- * - Empty state with Scan + Add actions
- * - Kitchen Summary chips (Use soon / Still fresh / Expired)
- * - Today's Focus section
- * - Recipe Ideas teaser
- * - Traffic-light sorted food items
- * - ConsumptionSlider modal
+ * DashboardScreen — Clean White Kitchen Dashboard
+ *
+ * Layout:
+ * 1. Header (greeting + avatar)
+ * 2. Kitchen Summary Card (empty state or stats)
+ * 3. Quick Actions (scan, add, fridge check)
+ * 4. Use These First (urgent/warning items)
+ * 5. Recipe Ideas (contextual CTA)
  */
 export const DashboardScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -32,9 +72,7 @@ export const DashboardScreen: React.FC = () => {
   const [selectedItem,  setSelectedItem]  = useState<{ id: number; name: string } | null>(null);
   const [refreshing,    setRefreshing]    = useState(false);
 
-  useEffect(() => {
-    fetchInventory();
-  }, []);
+  useEffect(() => { fetchInventory(); }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -57,207 +95,346 @@ export const DashboardScreen: React.FC = () => {
       `Remove "${item?.product_name}" from your kitchen?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text:    'Remove',
-          style:   'destructive',
-          onPress: () => deleteItem(id),
-        },
+        { text: 'Remove', style: 'destructive', onPress: () => deleteItem(id) },
       ]
     );
   };
 
-  // Greeting based on time of day
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
-  };
-
-  const firstName = user?.name?.split(' ')[0] ?? 'Chef';
-
-  // Summary counts
-  const redCount    = items.filter((i) => i.urgency_status === 'red').length;
+  // ─── Derived data ────────────────────────────────────────────────────────
+  const firstName  = user?.name?.split(' ')[0] ?? 'Chef';
+  const isEmpty    = items.length === 0;
+  const redCount   = items.filter((i) => i.urgency_status === 'red').length;
   const yellowCount = items.filter((i) => i.urgency_status === 'yellow').length;
-  const greenCount  = items.filter((i) => i.urgency_status === 'green').length;
-  const isEmpty     = items.length === 0;
+  const greenCount = items.filter((i) => i.urgency_status === 'green').length;
+  const expiringCount = redCount + yellowCount;
 
+  // Focus items: urgent first, then warning, sorted by expiry date
+  const focusItems = useMemo(() => {
+    return items
+      .filter((i) => i.urgency_status === 'red' || i.urgency_status === 'yellow')
+      .sort((a, b) => {
+        const urgencyOrder = (s: string) => s === 'red' ? 0 : 1;
+        const diff = urgencyOrder(a.urgency_status) - urgencyOrder(b.urgency_status);
+        if (diff !== 0) return diff;
+        return new Date(a.expiration_date).getTime() - new Date(b.expiration_date).getTime();
+      })
+      .slice(0, 5); // show top 5
+  }, [items]);
+
+  const hasUrgentItems = focusItems.length > 0;
+
+  // ─── Render ──────────────────────────────────────────────────────────────
   return (
     <View style={styles.screen}>
-      <FlatList
-        data={items}
-        keyExtractor={(item) => item.id.toString()}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={Colors.accent}
-            colors={[Colors.accent]}
+            tintColor={HC.primary}
+            colors={[HC.primary]}
           />
         }
-        ListHeaderComponent={
-          <>
-            {/* ─── Header ─── */}
-            <View style={styles.header}>
-              <View style={styles.headerText}>
-                <Text style={styles.greeting}>{getGreeting()}, {firstName} 👋</Text>
-                <Text style={styles.subtitle}>What's in your kitchen today?</Text>
-              </View>
-              {/* Profile avatar / logout tap target — subtle, no "Exit" label */}
-              <TouchableOpacity style={styles.avatarBtn} onPress={logout} activeOpacity={0.7}>
-                <Text style={styles.avatarInitial}>{firstName[0].toUpperCase()}</Text>
+      >
+        {/* ─── 1. Header ─── */}
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <Text style={styles.greeting}>{getGreeting()}, {firstName}</Text>
+            <Text style={styles.subtitle}>What's in your kitchen today?</Text>
+          </View>
+          <TouchableOpacity style={styles.avatarBtn} onPress={logout} activeOpacity={0.7}>
+            <Text style={styles.avatarInitial}>{firstName[0].toUpperCase()}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ─── Loading ─── */}
+        {isLoading && items.length === 0 && (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="large" color={HC.primary} />
+            <Text style={styles.loadingText}>Loading your kitchen...</Text>
+          </View>
+        )}
+
+        {/* ─── 2. Kitchen Summary Card ─── */}
+        {!isLoading && isEmpty && (
+          <View style={styles.summaryCard}>
+            <View style={styles.summaryIconCircle}>
+              <Feather name="package" size={28} color={HC.primary} />
+            </View>
+            <Text style={styles.summaryTitle}>Your kitchen is empty</Text>
+            <Text style={styles.summaryDesc}>
+              Scan a receipt or add your first ingredient to start reducing food waste.
+            </Text>
+            <View style={styles.summaryActions}>
+              <TouchableOpacity
+                style={styles.primaryBtn}
+                onPress={() => navigation.navigate('Scan')}
+                activeOpacity={0.85}
+              >
+                <Feather name="camera" size={18} color={HC.white} style={{ marginRight: 8 }} />
+                <Text style={styles.primaryBtnText}>Scan Receipt</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.secondaryBtn}
+                onPress={() => navigation.navigate('FridgeCheck')}
+                activeOpacity={0.8}
+              >
+                <Feather name="plus-circle" size={18} color={HC.primary} style={{ marginRight: 8 }} />
+                <Text style={styles.secondaryBtnText}>Add Manually</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        )}
 
-            {/* ─── Kitchen Summary Chips ─── */}
-            {!isEmpty && (
-              <View style={styles.summaryRow}>
-                <View style={[styles.chip, styles.chipRed]}>
-                  <Text style={[styles.chipDot, { color: Colors.urgencyRed }]}>●</Text>
-                  <Text style={[styles.chipText, { color: Colors.urgencyRed }]}>
-                    {redCount} Use today
-                  </Text>
-                </View>
-                <View style={[styles.chip, styles.chipYellow]}>
-                  <Text style={[styles.chipDot, { color: Colors.urgencyYellow }]}>●</Text>
-                  <Text style={[styles.chipText, { color: Colors.urgencyYellow }]}>
-                    {yellowCount} Use soon
-                  </Text>
-                </View>
-                <View style={[styles.chip, styles.chipGreen]}>
-                  <Text style={[styles.chipDot, { color: Colors.urgencyGreen }]}>●</Text>
-                  <Text style={[styles.chipText, { color: Colors.urgencyGreen }]}>
-                    {greenCount} Fresh
-                  </Text>
-                </View>
+        {!isLoading && !isEmpty && (
+          <View style={styles.summaryCard}>
+            <View style={styles.summaryHeader}>
+              <View>
+                <Text style={styles.summaryTitle}>Kitchen Summary</Text>
+                <Text style={styles.summarySubtitle}>Here's what needs your attention today.</Text>
               </View>
-            )}
-
-            {/* ─── Loading ─── */}
-            {isLoading && items.length === 0 && (
-              <View style={styles.loadingBox}>
-                <ActivityIndicator size="large" color={Colors.accent} />
-                <Text style={styles.loadingText}>Loading your kitchen...</Text>
-              </View>
-            )}
-
-            {/* ─── Empty State Card ─── */}
-            {isEmpty && !isLoading && (
-              <View style={[styles.card, styles.emptyCard]}>
-                <Text style={styles.emptyIllustration}>🥬</Text>
-                <Text style={styles.emptyTitle}>Your kitchen is empty</Text>
-                <Text style={styles.emptySubtitle}>
-                  Scan a receipt or add your first ingredient to start reducing food waste.
-                </Text>
-                <View style={styles.emptyActions}>
-                  <TouchableOpacity
-                    style={styles.primaryBtn}
-                    onPress={() => navigation.navigate('Scan')}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.primaryBtnText}>📷  Scan Receipt</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.secondaryBtn}
-                    onPress={() => navigation.navigate('FridgeCheck')}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.secondaryBtnText}>🧺  Add Manually</Text>
-                  </TouchableOpacity>
+            </View>
+            <View style={styles.statsRow}>
+              <View style={styles.statItem}>
+                <View style={[styles.statIconBox, { backgroundColor: HC.softGreen }]}>
+                  <Feather name="box" size={18} color={HC.primary} />
                 </View>
+                <Text style={styles.statNumber}>{items.length}</Text>
+                <Text style={styles.statLabel}>Ingredients</Text>
               </View>
-            )}
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <View style={[styles.statIconBox, { backgroundColor: HC.warningBg }]}>
+                  <Feather name="clock" size={18} color={HC.warning} />
+                </View>
+                <Text style={styles.statNumber}>{yellowCount}</Text>
+                <Text style={styles.statLabel}>Expiring Soon</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <View style={[styles.statIconBox, { backgroundColor: HC.urgentBg }]}>
+                  <Feather name="alert-triangle" size={18} color={HC.urgent} />
+                </View>
+                <Text style={styles.statNumber}>{redCount}</Text>
+                <Text style={styles.statLabel}>Urgent</Text>
+              </View>
+            </View>
+          </View>
+        )}
 
-            {/* ─── Today's Focus ─── */}
+        {/* ─── 3. Quick Actions ─── */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Quick Actions</Text>
+        </View>
+        <View style={styles.quickActionsGrid}>
+          <TouchableOpacity
+            style={styles.quickActionCard}
+            onPress={() => navigation.navigate('Scan')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: HC.softGreen }]}>
+              <Feather name="camera" size={22} color={HC.primary} />
+            </View>
+            <Text style={styles.quickActionTitle}>Scan Receipt</Text>
+            <Text style={styles.quickActionDesc}>Add items from your grocery receipt</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickActionCard}
+            onPress={() => navigation.navigate('FridgeCheck')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: '#EEF2FF' }]}>
+              <Feather name="plus-square" size={22} color="#5B6AD0" />
+            </View>
+            <Text style={styles.quickActionTitle}>Add Manually</Text>
+            <Text style={styles.quickActionDesc}>Add ingredients one by one</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickActionCard}
+            onPress={() => navigation.navigate('FridgeCheck')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.quickActionIcon, { backgroundColor: '#FEF7E6' }]}>
+              <Feather name="list" size={22} color="#D4860A" />
+            </View>
+            <Text style={styles.quickActionTitle}>Fridge Check</Text>
+            <Text style={styles.quickActionDesc}>Review inventory before shopping</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ─── 4. Use These First ─── */}
+        {!isEmpty && (
+          <>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Today's Focus</Text>
-              {!isEmpty && (
+              <View>
+                <Text style={styles.sectionTitle}>Use these first</Text>
+                <Text style={styles.sectionSubtitle}>Ingredients that need your attention today.</Text>
+              </View>
+              {hasUrgentItems && (
                 <TouchableOpacity onPress={() => navigation.navigate('FridgeCheck')}>
                   <Text style={styles.sectionLink}>See all</Text>
                 </TouchableOpacity>
               )}
             </View>
 
-            {isEmpty ? (
-              <View style={[styles.card, styles.hintCard]}>
-                <Text style={styles.hintEmoji}>🗓️</Text>
-                <Text style={styles.hintText}>
-                  No expiring food yet. We'll remind you when something needs to be used.
-                </Text>
+            {hasUrgentItems ? (
+              <View style={styles.focusList}>
+                {focusItems.map((item) => {
+                  const days = getDaysRemaining(item.expiration_date);
+                  const isUrgent = item.urgency_status === 'red';
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={styles.focusCard}
+                      onPress={() => {
+                        if (item.is_scalable) handleSliderOpen(item.id);
+                      }}
+                      activeOpacity={item.is_scalable ? 0.7 : 1}
+                    >
+                      <View style={[
+                        styles.focusAccent,
+                        { backgroundColor: isUrgent ? HC.urgent : HC.warning }
+                      ]} />
+                      <View style={styles.focusContent}>
+                        <View style={styles.focusTop}>
+                          <View style={styles.focusInfo}>
+                            <Text style={styles.focusName} numberOfLines={1}>
+                              {item.product_name}
+                            </Text>
+                            <Text style={styles.focusMeta}>
+                              {parseFloat(item.quantity.toString()).toFixed(1)} {item.unit} · {expiryText(days)}
+                            </Text>
+                          </View>
+                          <View style={[
+                            styles.statusBadge,
+                            { backgroundColor: isUrgent ? HC.urgentBg : HC.warningBg }
+                          ]}>
+                            <View style={[
+                              styles.statusDot,
+                              { backgroundColor: isUrgent ? HC.urgent : HC.warning }
+                            ]} />
+                            <Text style={[
+                              styles.statusText,
+                              { color: isUrgent ? HC.urgent : HC.warning }
+                            ]}>
+                              {isUrgent ? 'Urgent' : 'Warning'}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                      {/* Delete action */}
+                      <TouchableOpacity
+                        style={styles.focusDeleteBtn}
+                        onPress={() => handleDelete(item.id)}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Feather name="trash-2" size={16} color={HC.textMuted} />
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             ) : (
-              /* Items rendered by FlatList below — section header is part of ListHeader */
-              <Text style={styles.sectionSubtitle}>
-                {redCount + yellowCount > 0
-                  ? `${redCount + yellowCount} item${redCount + yellowCount > 1 ? 's' : ''} need your attention soon.`
-                  : 'Everything looks good! Nothing urgent right now.'}
-              </Text>
-            )}
-
-            {/* ─── Recipe Ideas section ─── */}
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Recipe Ideas</Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.card, styles.recipeCard]}
-              onPress={() => navigation.navigate('Recipe')}
-              activeOpacity={0.85}
-            >
-              {isEmpty ? (
-                <>
-                  <Text style={styles.recipeCardEmoji}>🍲</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.recipeCardTitle}>Unlock recipe suggestions</Text>
-                    <Text style={styles.recipeCardSub}>
-                      Add ingredients to get personalised recipe ideas.
-                    </Text>
-                  </View>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.recipeCardEmoji}>✨</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.recipeCardTitle}>Generate a recipe</Text>
-                    <Text style={styles.recipeCardSub}>
-                      Use your {items.length} ingredient{items.length > 1 ? 's' : ''} to cook something delicious.
-                    </Text>
-                  </View>
-                  <Text style={styles.recipeCardArrow}>›</Text>
-                </>
-              )}
-            </TouchableOpacity>
-
-            {/* ─── Items section header (only when there are items) ─── */}
-            {!isEmpty && (
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Your Kitchen</Text>
-                <TouchableOpacity onPress={() => navigation.navigate('Scan')}>
-                  <Text style={styles.sectionLink}>+ Scan</Text>
-                </TouchableOpacity>
+              <View style={styles.positiveCard}>
+                <View style={[styles.positiveIconBox, { backgroundColor: HC.softGreen }]}>
+                  <Feather name="check-circle" size={22} color={HC.primary} />
+                </View>
+                <View style={styles.positiveContent}>
+                  <Text style={styles.positiveTitle}>All good!</Text>
+                  <Text style={styles.positiveDesc}>
+                    No urgent ingredients. Your kitchen is looking great.
+                  </Text>
+                </View>
               </View>
             )}
           </>
-        }
-        renderItem={({ item }) => (
-          <FoodItemCard
-            item={item}
-            onSlider={item.is_scalable ? handleSliderOpen : undefined}
-            onDelete={handleDelete}
-          />
         )}
-        contentContainerStyle={styles.listContent}
-      />
 
-      {/* ─── FAB: Scan Receipt (only when items exist) ─── */}
-      {!isEmpty && (
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => navigation.navigate('Scan')}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.fabText}>📷  Scan Receipt</Text>
-        </TouchableOpacity>
-      )}
+        {isEmpty && !isLoading && (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Use these first</Text>
+            </View>
+            <View style={styles.positiveCard}>
+              <View style={[styles.positiveIconBox, { backgroundColor: HC.surface }]}>
+                <Feather name="inbox" size={22} color={HC.textMuted} />
+              </View>
+              <View style={styles.positiveContent}>
+                <Text style={styles.positiveDesc}>
+                  Add your first ingredients to see what needs attention.
+                </Text>
+              </View>
+            </View>
+          </>
+        )}
+
+        {/* ─── 5. Recipe Ideas ─── */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Recipe Ideas</Text>
+          <Text style={styles.sectionSubtitleInline}>Cook before it goes to waste.</Text>
+        </View>
+
+        {hasUrgentItems ? (
+          <TouchableOpacity
+            style={styles.recipeCard}
+            onPress={() => navigation.navigate('Recipe')}
+            activeOpacity={0.8}
+          >
+            <View style={styles.recipeCardInner}>
+              <View style={[styles.recipeIconBox, { backgroundColor: HC.softGreen }]}>
+                <Feather name="book-open" size={24} color={HC.primary} />
+              </View>
+              <View style={styles.recipeCardContent}>
+                <Text style={styles.recipeCardTitle}>Turn expiring ingredients into meals</Text>
+                <Text style={styles.recipeCardDesc}>
+                  Generate recipes based on {expiringCount} ingredient{expiringCount > 1 ? 's' : ''} that need to be used first.
+                </Text>
+              </View>
+            </View>
+            <View style={styles.recipeCardCta}>
+              <Text style={styles.recipeCardCtaText}>Generate Recipe</Text>
+              <Feather name="arrow-right" size={16} color={HC.primary} />
+            </View>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.recipeCard}
+            onPress={() => isEmpty ? navigation.navigate('FridgeCheck') : navigation.navigate('Recipe')}
+            activeOpacity={0.8}
+          >
+            <View style={styles.recipeCardInner}>
+              <View style={[styles.recipeIconBox, { backgroundColor: HC.softGreen }]}>
+                <Feather name={isEmpty ? 'plus-circle' : 'check-circle'} size={24} color={HC.primary} />
+              </View>
+              <View style={styles.recipeCardContent}>
+                <Text style={styles.recipeCardTitle}>
+                  {isEmpty ? 'Get started with recipes' : 'Your kitchen is under control'}
+                </Text>
+                <Text style={styles.recipeCardDesc}>
+                  {isEmpty
+                    ? 'Add ingredients to get personalised recipe ideas.'
+                    : 'Add more ingredients or check your fridge to get recipe ideas.'}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.recipeCardCta}>
+              <Text style={styles.recipeCardCtaText}>
+                {isEmpty ? 'Add Ingredients' : 'View Recipes'}
+              </Text>
+              <Feather name="arrow-right" size={16} color={HC.primary} />
+            </View>
+          </TouchableOpacity>
+        )}
+
+        {/* Bottom spacing */}
+        <View style={{ height: 32 }} />
+      </ScrollView>
 
       {/* ─── Consumption Slider Modal ─── */}
       {selectedItem && (
@@ -275,13 +452,17 @@ export const DashboardScreen: React.FC = () => {
   );
 };
 
+// ─── Styles ─────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: HC.bg,
   },
-  listContent: {
-    paddingBottom: 100, // space above FAB
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 32,
   },
 
   // ─── Header ───
@@ -289,223 +470,396 @@ const styles = StyleSheet.create({
     flexDirection:     'row',
     alignItems:        'center',
     justifyContent:    'space-between',
-    paddingHorizontal: Spacing.xl,
-    paddingTop:        Spacing.xxxl,
-    paddingBottom:     Spacing.lg,
+    paddingHorizontal: 24,
+    paddingTop:        Platform.OS === 'ios' ? 60 : 48,
+    paddingBottom:     20,
   },
-  headerText: {
+  headerLeft: {
     flex: 1,
   },
   greeting: {
-    color:      Colors.textPrimary,
-    fontSize:   Typography.fontSizeXl,
-    fontWeight: Typography.fontWeightBold,
-    letterSpacing: Typography.letterSpacingTight,
+    color:         HC.textPrimary,
+    fontSize:      22,
+    fontWeight:    '700',
+    letterSpacing: -0.3,
   },
   subtitle: {
-    color:     Colors.textSecondary,
-    fontSize:  Typography.fontSizeBody,
-    marginTop: Spacing.xs,
+    color:     HC.textSecondary,
+    fontSize:  14,
+    marginTop: 4,
   },
   avatarBtn: {
-    width:           40,
-    height:          40,
-    borderRadius:    20,
-    backgroundColor: Colors.accentLight,
+    width:           42,
+    height:          42,
+    borderRadius:    21,
+    backgroundColor: HC.softGreen,
     borderWidth:     1.5,
-    borderColor:     Colors.accent,
+    borderColor:     HC.primary,
     alignItems:      'center',
     justifyContent:  'center',
-    marginLeft:      Spacing.md,
+    marginLeft:      16,
   },
   avatarInitial: {
-    color:      Colors.accent,
-    fontSize:   Typography.fontSizeLg,
-    fontWeight: Typography.fontWeightBold,
-  },
-
-  // ─── Summary chips ───
-  summaryRow: {
-    flexDirection:     'row',
-    gap:               Spacing.sm,
-    paddingHorizontal: Spacing.xl,
-    paddingBottom:     Spacing.lg,
-  },
-  chip: {
-    flexDirection:   'row',
-    alignItems:      'center',
-    gap:             4,
-    paddingVertical:   5,
-    paddingHorizontal: Spacing.sm,
-    borderRadius:    BorderRadius.full,
-    borderWidth:     1,
-  },
-  chipRed:    { backgroundColor: Colors.urgencyRedBg,    borderColor: '#F5C6C2' },
-  chipYellow: { backgroundColor: Colors.urgencyYellowBg, borderColor: '#F5DCA8' },
-  chipGreen:  { backgroundColor: Colors.urgencyGreenBg,  borderColor: '#B8DECA' },
-  chipDot:   { fontSize: 8 },
-  chipText:  { fontSize: Typography.fontSizeSm, fontWeight: Typography.fontWeightSemibold },
-
-  // ─── Section headers ───
-  sectionHeader: {
-    flexDirection:     'row',
-    justifyContent:    'space-between',
-    alignItems:        'center',
-    paddingHorizontal: Spacing.xl,
-    paddingTop:        Spacing.lg,
-    paddingBottom:     Spacing.sm,
-  },
-  sectionTitle: {
-    color:      Colors.textPrimary,
-    fontSize:   Typography.fontSizeHeader,
-    fontWeight: Typography.fontWeightBold,
-    letterSpacing: Typography.letterSpacingTight,
-  },
-  sectionLink: {
-    color:      Colors.accent,
-    fontSize:   Typography.fontSizeSm,
-    fontWeight: Typography.fontWeightSemibold,
-  },
-  sectionSubtitle: {
-    color:             Colors.textSecondary,
-    fontSize:          Typography.fontSizeBody,
-    paddingHorizontal: Spacing.xl,
-    paddingBottom:     Spacing.sm,
-  },
-
-  // ─── Shared card ───
-  card: {
-    backgroundColor:   Colors.surface,
-    borderRadius:      BorderRadius.card,
-    marginHorizontal:  Spacing.xl,
-    marginBottom:      Spacing.md,
-    padding:           Spacing.xl,
-    ...Shadows.card,
+    color:      HC.primary,
+    fontSize:   17,
+    fontWeight: '700',
   },
 
   // ─── Loading ───
   loadingBox: {
-    alignItems:     'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.xxxl,
+    alignItems:      'center',
+    justifyContent:  'center',
+    paddingVertical: 48,
   },
   loadingText: {
-    color:     Colors.textSecondary,
-    fontSize:  Typography.fontSizeBody,
-    marginTop: Spacing.md,
+    color:     HC.textSecondary,
+    fontSize:  14,
+    marginTop: 12,
   },
 
-  // ─── Empty state ───
-  emptyCard: {
-    alignItems: 'center',
-    paddingVertical: Spacing.xxl,
+  // ─── Kitchen Summary Card ───
+  summaryCard: {
+    backgroundColor: HC.white,
+    borderRadius:    24,
+    marginHorizontal: 20,
+    marginBottom:    8,
+    padding:         24,
+    borderWidth:     1,
+    borderColor:     HC.border,
+    shadowColor:     HC.cardShadow,
+    shadowOffset:    { width: 0, height: 2 },
+    shadowOpacity:   0.05,
+    shadowRadius:    12,
+    elevation:       3,
   },
-  emptyIllustration: {
-    fontSize:     56,
-    marginBottom: Spacing.lg,
+  summaryHeader: {
+    flexDirection:  'row',
+    alignItems:     'center',
+    justifyContent: 'space-between',
+    marginBottom:   20,
   },
-  emptyTitle: {
-    color:      Colors.textPrimary,
-    fontSize:   Typography.fontSizeXl,
-    fontWeight: Typography.fontWeightBold,
+  summaryIconCircle: {
+    width:           56,
+    height:          56,
+    borderRadius:    28,
+    backgroundColor: HC.softGreen,
+    alignItems:      'center',
+    justifyContent:  'center',
+    alignSelf:       'center',
+    marginBottom:    16,
+  },
+  summaryTitle: {
+    color:         HC.textPrimary,
+    fontSize:      18,
+    fontWeight:    '700',
+    letterSpacing: -0.3,
+  },
+  summarySubtitle: {
+    color:     HC.textSecondary,
+    fontSize:  13,
+    marginTop: 3,
+  },
+  summaryDesc: {
+    color:      HC.textSecondary,
+    fontSize:   14,
     textAlign:  'center',
-    marginBottom: Spacing.sm,
-  },
-  emptySubtitle: {
-    color:     Colors.textSecondary,
-    fontSize:  Typography.fontSizeBody,
-    textAlign: 'center',
     lineHeight: 22,
-    marginBottom: Spacing.xl,
+    marginBottom: 20,
   },
-  emptyActions: {
+  summaryActions: {
     width: '100%',
-    gap:   Spacing.sm,
+    gap:   10,
   },
+
+  // ─── Stats row ───
+  statsRow: {
+    flexDirection:  'row',
+    alignItems:     'center',
+    justifyContent: 'space-around',
+  },
+  statItem: {
+    flex:       1,
+    alignItems: 'center',
+  },
+  statIconBox: {
+    width:        40,
+    height:       40,
+    borderRadius: 12,
+    alignItems:   'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  statNumber: {
+    color:      HC.textPrimary,
+    fontSize:   20,
+    fontWeight: '700',
+  },
+  statLabel: {
+    color:     HC.textSecondary,
+    fontSize:  11,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  statDivider: {
+    width:           1,
+    height:          40,
+    backgroundColor: HC.border,
+  },
+
+  // ─── Buttons ───
   primaryBtn: {
-    backgroundColor: Colors.accent,
-    borderRadius:    BorderRadius.button,
+    backgroundColor: HC.primary,
+    borderRadius:    14,
     height:          50,
     alignItems:      'center',
     justifyContent:  'center',
+    flexDirection:   'row',
   },
   primaryBtnText: {
-    color:      Colors.textInverse,
-    fontSize:   Typography.fontSizeButton,
-    fontWeight: Typography.fontWeightBold,
+    color:      HC.white,
+    fontSize:   15,
+    fontWeight: '700',
   },
   secondaryBtn: {
-    backgroundColor: Colors.accentLight,
-    borderRadius:    BorderRadius.button,
+    backgroundColor: HC.white,
+    borderRadius:    14,
     height:          50,
     alignItems:      'center',
     justifyContent:  'center',
-    borderWidth:     1,
-    borderColor:     Colors.accent,
+    flexDirection:   'row',
+    borderWidth:     1.5,
+    borderColor:     HC.border,
   },
   secondaryBtnText: {
-    color:      Colors.accent,
-    fontSize:   Typography.fontSizeButton,
-    fontWeight: Typography.fontWeightSemibold,
+    color:      HC.primary,
+    fontSize:   15,
+    fontWeight: '600',
   },
 
-  // ─── Hint card ───
-  hintCard: {
-    flexDirection: 'row',
-    alignItems:    'center',
-    gap:           Spacing.md,
-    paddingVertical: Spacing.lg,
+  // ─── Section ───
+  sectionHeader: {
+    paddingHorizontal: 24,
+    paddingTop:        24,
+    paddingBottom:     4,
+    flexDirection:     'row',
+    alignItems:        'flex-end',
+    justifyContent:    'space-between',
   },
-  hintEmoji: { fontSize: 28 },
-  hintText: {
-    flex:       1,
-    color:      Colors.textSecondary,
-    fontSize:   Typography.fontSizeBody,
-    lineHeight: 22,
+  sectionTitle: {
+    color:         HC.textPrimary,
+    fontSize:      17,
+    fontWeight:    '700',
+    letterSpacing: -0.2,
   },
-
-  // ─── Recipe card ───
-  recipeCard: {
-    flexDirection: 'row',
-    alignItems:    'center',
-    gap:           Spacing.md,
-    backgroundColor: Colors.accentLight,
-    borderWidth:   1,
-    borderColor:   '#B8DECA',
+  sectionSubtitle: {
+    color:     HC.textSecondary,
+    fontSize:  13,
+    marginTop: 2,
   },
-  recipeCardEmoji: { fontSize: 32 },
-  recipeCardTitle: {
-    color:      Colors.textPrimary,
-    fontSize:   Typography.fontSizeMd,
-    fontWeight: Typography.fontWeightSemibold,
-    marginBottom: 2,
+  sectionSubtitleInline: {
+    color:    HC.textSecondary,
+    fontSize: 12,
   },
-  recipeCardSub: {
-    color:    Colors.textSecondary,
-    fontSize: Typography.fontSizeSm,
-  },
-  recipeCardArrow: {
-    color:      Colors.accent,
-    fontSize:   Typography.fontSizeXl,
-    fontWeight: Typography.fontWeightBold,
+  sectionLink: {
+    color:      HC.primary,
+    fontSize:   13,
+    fontWeight: '600',
   },
 
-  // ─── FAB ───
-  fab: {
-    position:          'absolute',
-    bottom:            Spacing.xl,
-    left:              Spacing.xl,
-    right:             Spacing.xl,
-    height:            52,
-    backgroundColor:   Colors.accent,
-    borderRadius:      BorderRadius.button,
+  // ─── Quick Actions Grid ───
+  quickActionsGrid: {
+    flexDirection:     'row',
+    paddingHorizontal: 20,
+    paddingTop:        12,
+    gap:               10,
+  },
+  quickActionCard: {
+    flex:            1,
+    backgroundColor: HC.white,
+    borderRadius:    18,
+    padding:         16,
+    borderWidth:     1,
+    borderColor:     HC.border,
+    shadowColor:     HC.cardShadow,
+    shadowOffset:    { width: 0, height: 1 },
+    shadowOpacity:   0.04,
+    shadowRadius:    6,
+    elevation:       2,
+  },
+  quickActionIcon: {
+    width:        42,
+    height:       42,
+    borderRadius: 13,
+    alignItems:   'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  quickActionTitle: {
+    color:      HC.textPrimary,
+    fontSize:   13,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  quickActionDesc: {
+    color:      HC.textSecondary,
+    fontSize:   11,
+    lineHeight: 15,
+  },
+
+  // ─── Focus Items ───
+  focusList: {
+    paddingHorizontal: 20,
+    paddingTop:        8,
+    gap:               8,
+  },
+  focusCard: {
+    flexDirection:   'row',
+    backgroundColor: HC.white,
+    borderRadius:    16,
+    overflow:        'hidden',
+    borderWidth:     1,
+    borderColor:     HC.border,
+    shadowColor:     HC.cardShadow,
+    shadowOffset:    { width: 0, height: 1 },
+    shadowOpacity:   0.04,
+    shadowRadius:    6,
+    elevation:       2,
+    alignItems:      'center',
+  },
+  focusAccent: {
+    width: 4,
+    alignSelf: 'stretch',
+  },
+  focusContent: {
+    flex:    1,
+    padding: 14,
+  },
+  focusTop: {
+    flexDirection:  'row',
+    alignItems:     'center',
+    justifyContent: 'space-between',
+    gap:            8,
+  },
+  focusInfo: {
+    flex: 1,
+  },
+  focusName: {
+    color:      HC.textPrimary,
+    fontSize:   15,
+    fontWeight: '600',
+  },
+  focusMeta: {
+    color:     HC.textSecondary,
+    fontSize:  12,
+    marginTop: 3,
+  },
+  statusBadge: {
+    flexDirection:     'row',
     alignItems:        'center',
-    justifyContent:    'center',
-    ...Shadows.card,
+    paddingVertical:   4,
+    paddingHorizontal: 10,
+    borderRadius:      20,
+    gap:               5,
   },
-  fabText: {
-    color:      Colors.textInverse,
-    fontSize:   Typography.fontSizeButton,
-    fontWeight: Typography.fontWeightBold,
+  statusDot: {
+    width:        6,
+    height:       6,
+    borderRadius: 3,
+  },
+  statusText: {
+    fontSize:   11,
+    fontWeight: '600',
+  },
+  focusDeleteBtn: {
+    paddingHorizontal: 14,
+    paddingVertical:   14,
+  },
+
+  // ─── Positive card ───
+  positiveCard: {
+    flexDirection:     'row',
+    alignItems:        'center',
+    backgroundColor:   HC.white,
+    borderRadius:      16,
+    marginHorizontal:  20,
+    marginTop:         8,
+    padding:           16,
+    borderWidth:       1,
+    borderColor:       HC.border,
+    gap:               14,
+  },
+  positiveIconBox: {
+    width:        44,
+    height:       44,
+    borderRadius: 14,
+    alignItems:   'center',
+    justifyContent: 'center',
+  },
+  positiveContent: {
+    flex: 1,
+  },
+  positiveTitle: {
+    color:      HC.textPrimary,
+    fontSize:   14,
+    fontWeight: '700',
+    marginBottom: 3,
+  },
+  positiveDesc: {
+    color:      HC.textSecondary,
+    fontSize:   13,
+    lineHeight: 19,
+  },
+
+  // ─── Recipe Ideas Card ───
+  recipeCard: {
+    backgroundColor:   HC.softGreen,
+    borderRadius:      20,
+    marginHorizontal:  20,
+    marginTop:         12,
+    padding:           20,
+    borderWidth:       1,
+    borderColor:       '#D4E8DC',
+  },
+  recipeCardInner: {
+    flexDirection: 'row',
+    alignItems:    'flex-start',
+    gap:           14,
+    marginBottom:  16,
+  },
+  recipeIconBox: {
+    width:        48,
+    height:       48,
+    borderRadius: 16,
+    backgroundColor: HC.white,
+    alignItems:   'center',
+    justifyContent: 'center',
+  },
+  recipeCardContent: {
+    flex: 1,
+  },
+  recipeCardTitle: {
+    color:      HC.textPrimary,
+    fontSize:   15,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  recipeCardDesc: {
+    color:      HC.textSecondary,
+    fontSize:   13,
+    lineHeight: 19,
+  },
+  recipeCardCta: {
+    flexDirection:   'row',
+    alignItems:      'center',
+    justifyContent:  'center',
+    backgroundColor: HC.white,
+    borderRadius:    12,
+    paddingVertical: 12,
+    gap:             6,
+  },
+  recipeCardCtaText: {
+    color:      HC.primary,
+    fontSize:   14,
+    fontWeight: '700',
   },
 });

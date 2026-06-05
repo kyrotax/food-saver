@@ -18,7 +18,7 @@ const Stack = createStackNavigator();
 
 const SCREEN_OPTIONS = {
   headerShown: false,
-  cardStyle:   { backgroundColor: Colors.background }, // warm cream #FFF8EA
+  cardStyle:   { backgroundColor: '#FFFFFF' }, // clean white — matches new design direction
 };
 
 export const AppNavigator: React.FC = () => {
