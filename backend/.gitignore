@@ -4,6 +4,8 @@
 /storage/*.key
 /vendor
 .env
+.env.*
+!.env.example
 .env.backup
 .env.production
 .phpunit.result.cache
@@ -12,5 +14,23 @@ homestead.json
 Homestead.yaml
 npm-debug.log
 yarn-error.log
-/.idea
-/.vscode
+/*.idea
+/*.vscode
+
+# Service accounts and private credential files
+food-saver-*.json
+*-credentials.json
+*.pem
+*.key
+*.p12
+*.pfx
+auth.json
+
+# Local SQLite databases
+*.sqlite
+*.sqlite-journal
+*.db
+
+# Logs
+*.log
+/storage/logs/*.log

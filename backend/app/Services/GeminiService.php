@@ -14,7 +14,7 @@ class GeminiService
     {
         $this->apiKey   = config('services.google.gemini_api_key');
         $this->endpoint = config('services.google.gemini_endpoint',
-            'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent');
+            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent');
     }
 
     /**
