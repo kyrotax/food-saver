@@ -10,8 +10,8 @@ import { useAuthStore } from '@features/auth/store/authStore';
  * - JSON content type
  */
 
-const API_BASE_URL = 'https://vqhffv4oxa.sharedwithexpose.com/api';// Replace with LAN IP for physical device / emulator
-// const API_BASE_URL = 'http://192.168.x.x:8000/api'; // Replace with LAN IP for physical device
+// const API_BASE_URL = 'https://vqhffv4oxa.sharedwithexpose.com/api'; // Expose tunnel (expired)
+const API_BASE_URL = 'http://192.168.1.4:8000/api'; // LAN — same Wi-Fi as dev machine
 
 export const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,

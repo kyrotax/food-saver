@@ -4,9 +4,8 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Animated,
 } from 'react-native';
-import { Colors, Typography, Spacing, BorderRadius, getUrgencyTheme } from '@app/theme/theme';
+import { Colors, Typography, Spacing, BorderRadius, Shadows, getUrgencyTheme } from '@app/theme/theme';
 import { FoodItem } from '@features/inventory/store/inventoryStore';
 
 interface FoodItemCardProps {
@@ -17,8 +16,9 @@ interface FoodItemCardProps {
 }
 
 /**
- * FoodItemCard — Neo-Brutalism styled card with:
- * - Traffic-light color border based on urgency_status (🟢🟡🔴)
+ * FoodItemCard — Warm kitchen-style card with:
+ * - Soft white card with shadow
+ * - Left accent bar based on urgency
  * - Product name, quantity, storage location
  * - Days remaining countdown
  * - Slider and delete action buttons (optional)
@@ -35,62 +35,70 @@ export const FoodItemCard: React.FC<FoodItemCardProps> = ({
 
   return (
     <View style={styles.card}>
-      {/* Main Content */}
-      <View style={styles.content}>
-        {/* Status Badge */}
-        <View style={[styles.badge, { borderColor: urgency.border, backgroundColor: urgency.background }]}>
-          <Text style={[styles.badgeText, { color: urgency.text }]}>{urgency.label}</Text>
+      {/* Left urgency accent bar */}
+      <View style={[styles.accentBar, { backgroundColor: urgency.border }]} />
+
+      <View style={styles.inner}>
+        {/* Top row: name + urgency badge */}
+        <View style={styles.topRow}>
+          <Text style={styles.productName} numberOfLines={2}>
+            {item.product_name}
+          </Text>
+          <View style={[styles.badge, { backgroundColor: urgency.background }]}>
+            <Text style={[styles.badgeText, { color: urgency.text }]}>{urgency.label}</Text>
+          </View>
         </View>
 
-        <Text style={styles.productName} numberOfLines={2}>
-          {item.product_name}
-        </Text>
-
+        {/* Meta row */}
         <View style={styles.metaRow}>
           <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>QTY</Text>
+            <Text style={styles.metaLabel}>Quantity</Text>
             <Text style={styles.metaValue}>
               {parseFloat(item.quantity.toString()).toFixed(2)} {item.unit}
             </Text>
           </View>
 
+          <View style={styles.metaDivider} />
+
           <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>STORAGE</Text>
+            <Text style={styles.metaLabel}>Storage</Text>
             <Text style={styles.metaValue}>{storageLabel}</Text>
           </View>
 
+          <View style={styles.metaDivider} />
+
           <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>EXPIRES</Text>
+            <Text style={styles.metaLabel}>Expires</Text>
             <Text style={[styles.metaValue, { color: urgency.text }]}>
-              {daysLeft <= 0 ? 'TODAY!' : `${daysLeft}d`}
+              {daysLeft <= 0 ? 'Today' : `${daysLeft}d left`}
             </Text>
           </View>
         </View>
-      </View>
 
-      {/* Action Buttons */}
-      {showActions && (
-        <View style={styles.actions}>
-          {item.is_scalable && onSlider && (
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.sliderBtn]}
-              onPress={() => onSlider(item.id)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.actionBtnText}>⚖️ Adjust</Text>
-            </TouchableOpacity>
-          )}
-          {onDelete && (
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.deleteBtn]}
-              onPress={() => onDelete(item.id)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.deleteBtnText}>🗑️ Delete</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
+        {/* Action Buttons */}
+        {showActions && (
+          <View style={styles.actions}>
+            {item.is_scalable && onSlider && (
+              <TouchableOpacity
+                style={styles.actionBtn}
+                onPress={() => onSlider(item.id)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.actionBtnText}>⚖️  Adjust Amount</Text>
+              </TouchableOpacity>
+            )}
+            {onDelete && (
+              <TouchableOpacity
+                style={styles.deleteBtn}
+                onPress={() => onDelete(item.id)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.deleteBtnText}>Remove</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </View>
     </View>
   );
 };
@@ -116,84 +124,100 @@ function getStorageLabel(location: string): string {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.surface,
-    borderWidth:     1,
-    borderColor:     Colors.border,
-    borderRadius:    BorderRadius.card, // 20px
+    borderRadius:    BorderRadius.card,
+    marginHorizontal: Spacing.xl,
     marginBottom:    Spacing.md,
+    flexDirection:   'row',
     overflow:        'hidden',
-    padding:         Spacing.lg,        // 16px
+    ...Shadows.card,
   },
-  content: {
-    padding: 0,
+  accentBar: {
+    width:          4,
+    borderTopLeftRadius:    BorderRadius.card,
+    borderBottomLeftRadius: BorderRadius.card,
+  },
+  inner: {
+    flex:    1,
+    padding: Spacing.lg,
+  },
+  topRow: {
+    flexDirection:  'row',
+    justifyContent: 'space-between',
+    alignItems:     'flex-start',
+    marginBottom:   Spacing.sm,
+    gap:            Spacing.sm,
+  },
+  productName: {
+    flex:       1,
+    color:      Colors.textPrimary,
+    fontSize:   Typography.fontSizeLg,
+    fontWeight: Typography.fontWeightBold,
+    letterSpacing: Typography.letterSpacingTight,
   },
   badge: {
     alignSelf:         'flex-start',
-    borderWidth:       1,
-    borderRadius:      BorderRadius.full, // pill style
-    paddingVertical:   Spacing.xs - 2,
+    borderRadius:      BorderRadius.full,
+    paddingVertical:   3,
     paddingHorizontal: Spacing.sm,
-    marginBottom:      Spacing.sm,
   },
   badgeText: {
-    fontSize:   Typography.fontSizeCaption,
-    fontWeight: Typography.fontWeightMedium,
-  },
-  productName: {
-    color:        Colors.textPrimary,
-    fontSize:     Typography.fontSizeLg,
-    fontWeight:   Typography.fontWeightBold,
-    marginBottom: Spacing.sm,
-    letterSpacing: Typography.letterSpacingTight,
+    fontSize:   Typography.fontSizeXs,
+    fontWeight: Typography.fontWeightSemibold,
   },
   metaRow: {
-    flexDirection:  'row',
-    justifyContent: 'space-between',
-    marginTop:      Spacing.xs,
+    flexDirection: 'row',
+    alignItems:    'center',
+    marginTop:     Spacing.xs,
   },
   metaItem: {
-    alignItems: 'flex-start',
-    flex:        1,
+    flex:       1,
+    alignItems: 'center',
+  },
+  metaDivider: {
+    width:      1,
+    height:     28,
+    backgroundColor: Colors.border,
   },
   metaLabel: {
-    color:        Colors.textSecondary,
-    fontSize:     Typography.fontSizeXs,
-    fontWeight:   Typography.fontWeightMedium,
-    letterSpacing: 0.5,
-    marginBottom:  2,
+    color:     Colors.textMuted,
+    fontSize:  Typography.fontSizeXs,
+    fontWeight: Typography.fontWeightMedium,
+    marginBottom: 2,
   },
   metaValue: {
     color:      Colors.textPrimary,
-    fontSize:   Typography.fontSizeMd,
+    fontSize:   Typography.fontSizeSm,
     fontWeight: Typography.fontWeightSemibold,
+    textAlign:  'center',
   },
   actions: {
-    flexDirection:   'row',
-    borderTopWidth:  1,
-    borderTopColor:  Colors.border,
-    paddingTop:      Spacing.md,
-    marginTop:       Spacing.md,
-    gap:             Spacing.sm,
+    flexDirection: 'row',
+    gap:           Spacing.sm,
+    marginTop:     Spacing.md,
+    paddingTop:    Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
   },
   actionBtn: {
     flex:           1,
-    height:         40,
-    borderRadius:   BorderRadius.button, // 14px
+    height:         36,
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius:   BorderRadius.lg,
     justifyContent: 'center',
     alignItems:     'center',
-    borderWidth:    1,
-  },
-  sliderBtn: {
-    borderColor:     Colors.border,
-    backgroundColor: Colors.transparent,
-  },
-  deleteBtn: {
-    borderColor:     Colors.urgencyRed,
-    backgroundColor: Colors.urgencyRedBg, // 15% opacity background
   },
   actionBtnText: {
     color:      Colors.textPrimary,
     fontSize:   Typography.fontSizeSm,
     fontWeight: Typography.fontWeightSemibold,
+  },
+  deleteBtn: {
+    paddingHorizontal: Spacing.lg,
+    height:           36,
+    backgroundColor: Colors.urgencyRedBg,
+    borderRadius:    BorderRadius.lg,
+    justifyContent:  'center',
+    alignItems:      'center',
   },
   deleteBtnText: {
     color:      Colors.urgencyRed,

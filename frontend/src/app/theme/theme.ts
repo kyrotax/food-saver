@@ -1,40 +1,43 @@
 /**
  * Food Saver — Design System
- * Cal AI-Inspired Premium Dark Mobile Design Language
+ * Warm Kitchen Companion Design Language
  *
- * Color Palette: Dark-first, minimal, premium, data-centric and high-contrast.
- * Typography: System fonts with bold weights and tight letter spacing.
+ * Color Palette: Warm cream base, natural greens, soft whites — food-oriented and inviting.
+ * Typography: System fonts with balanced weights.
  * Spacing: 8-point grid system.
  */
 
 export const Colors = {
-  // Base / Cal AI Theme
-  background:          '#0A0A0A',   // Main scaffold/screen background (background_primary)
-  surface:             '#141414',   // Cards, bottom sheets, modals (background_surface)
-  surfaceAlt:          '#1E1E1E',   // Input fields, secondary cards (background_elevated)
-  border:              '#2A2A2A',   // Card borders, dividers (border_subtle)
-  borderBold:          '#2A2A2A',   // For card outline borders
-  accent:              '#A8FF3E',   // CTAs, active states, key highlights (lime)
-  accentDark:          '#3EFF9E',   // Secondary actions, success states (mint)
+  // Base — warm cream kitchen palette
+  background:          '#FFF8EA',   // Warm cream — main scaffold background
+  surface:             '#FFFFFF',   // Pure white — cards, modals, bottom sheets
+  surfaceAlt:          '#FFF3D6',   // Warm tinted card — secondary / elevated surfaces
+  border:              '#E8DCC8',   // Soft warm tan border — subtle dividers
+  borderBold:          '#D4C4A8',   // Slightly stronger border for cards
+
+  // Accent — natural green (replaces neon lime)
+  accent:              '#3E8E5E',   // Natural forest green — CTAs, active states
+  accentLight:         '#EAF4EE',   // Very light green tint — tag backgrounds
+  accentMid:           '#6BB08A',   // Mid green — secondary actions, icons
 
   // Text
-  textPrimary:         '#FFFFFF',   // Headlines, key metrics
-  textSecondary:       '#8A8A8A',   // Labels, captions, helper text
-  textMuted:           '#3D3D3D',   // Placeholder, inactive items (text_disabled)
-  textInverse:         '#0A0A0A',   // Button text (dark)
+  textPrimary:         '#2D2416',   // Warm near-black — headlines, key content
+  textSecondary:       '#7A6A52',   // Warm brown-grey — labels, captions
+  textMuted:           '#B8A990',   // Light warm tan — placeholder, disabled
+  textInverse:         '#FFFFFF',   // White — on-accent button text
 
-  // Traffic Light Urgency Accent Colors
-  urgencyGreen:        '#A8FF3E',   // lime
-  urgencyGreenBg:      '#A8FF3E1A', // 10% opacity pill background
-  urgencyYellow:       '#FFB830',   // warm amber
-  urgencyYellowBg:     '#FFB8301A', // 10% opacity pill background
-  urgencyRed:          '#FF4757',   // vibrant red
-  urgencyRedBg:        '#FF47571A', // 10% opacity pill background
+  // Traffic Light Urgency Colors (warmer, less neon)
+  urgencyGreen:        '#3E8E5E',   // Natural green
+  urgencyGreenBg:      '#EAF4EE',   // Soft green tint
+  urgencyYellow:       '#D4860A',   // Warm amber
+  urgencyYellowBg:     '#FEF3E0',   // Soft amber tint
+  urgencyRed:          '#C0392B',   // Muted red
+  urgencyRedBg:        '#FDECEA',   // Soft red tint
 
   // Utility
   white:               '#FFFFFF',
   black:               '#000000',
-  overlay:             'rgba(0,0,0,0.85)',
+  overlay:             'rgba(45, 36, 22, 0.5)',
   transparent:         'transparent',
 };
 
@@ -65,8 +68,8 @@ export const Typography = {
   lineHeightTight:  1.2,
   lineHeightNormal: 1.5,
   lineHeightRelaxed: 1.8,
-  
-  letterSpacingTight: -0.5, // tight, like Cal AI's bold headers
+
+  letterSpacingTight: -0.3,
 };
 
 export const Spacing = {
@@ -84,22 +87,30 @@ export const BorderRadius = {
   sm:     4,
   md:     8,
   lg:     12,
-  input:  14,   // Button / Input Fields border radius
+  input:  14,
   button: 14,
   xl:     16,
-  card:   20,   // Card Component border radius
+  card:   20,
   full:   9999,
 };
 
 export const Shadows = {
-  brutalist: {
-    shadowColor: 'transparent',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
+  card: {
+    shadowColor: '#2D2416',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 3,
   },
   soft: {
+    shadowColor: '#2D2416',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  // kept for backwards compat
+  brutalist: {
     shadowColor: 'transparent',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0,
@@ -118,22 +129,21 @@ export function getUrgencyTheme(urgencyStatus: 'green' | 'yellow' | 'red') {
         background: Colors.urgencyRedBg,
         border:     Colors.urgencyRed,
         text:       Colors.urgencyRed,
-        label:      '🔴 Urgent',
+        label:      'Use today',
       };
     case 'yellow':
       return {
         background: Colors.urgencyYellowBg,
         border:     Colors.urgencyYellow,
         text:       Colors.urgencyYellow,
-        label:      '🟡 Warning',
+        label:      'Use soon',
       };
     default:
       return {
         background: Colors.urgencyGreenBg,
         border:     Colors.urgencyGreen,
         text:       Colors.urgencyGreen,
-        label:      '🟢 Safe',
+        label:      'Still fresh',
       };
   }
 }
-
