@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+
+# Local Expo files
+.expo/
+web-build/
+
+# Dependency directories
+node_modules/
+
+# Production build artifacts
+android/
+ios/
+
+# Env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Expo tool files
+.expo-shared/
+
+# IDE files
+/.idea
+/.vscode

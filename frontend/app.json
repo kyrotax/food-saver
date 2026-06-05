@@ -1,0 +1,67 @@
+{
+  "expo": {
+    "name": "Food Saver",
+    "slug": "food-saver",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0D0D0D"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.foodsaver.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Food Saver needs camera access to scan grocery receipts.",
+        "NSPhotoLibraryUsageDescription": "Food Saver needs photo library access to upload receipt images."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0D0D0D"
+      },
+      "package": "com.foodsaver.app",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "USE_FINGERPRINT"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Food Saver to access your camera to scan grocery receipts."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Food Saver to access your photos to upload grocery receipts."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#1DB954"
+        }
+      ]
+    ],
+    "extra": {
+      "apiBaseUrl": "https://vqhffv4oxa.sharedwithexpose.com/api",
+      "eas": {
+        "projectId": "food-saver-project-id"
+      }
+    }
+  }
+}
