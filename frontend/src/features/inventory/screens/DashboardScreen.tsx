@@ -9,8 +9,9 @@ import { useInventoryStore, FoodItem } from '@features/inventory/store/inventory
 import { useAuthStore } from '@features/auth/store/authStore';
 import { ConsumptionSlider } from '@features/inventory/components/ConsumptionSlider';
 
-// ─── Color Tokens (Home palette — white-first, matches Fridge Check) ────────
-const HC = {
+// ─── Design Tokens ──────────────────────────────────────────────────────────
+// Centralized palette — white-first, food-tech premium
+const C = {
   bg:            '#FFFFFF',
   surface:       '#F8FAF8',
   softGreen:     '#EAF5EE',
@@ -27,8 +28,71 @@ const HC = {
   safe:          '#3A9B68',
   safeBg:        '#EAF5EE',
   white:         '#FFFFFF',
-  cardShadow:    '#1F2A24',
 };
+
+// Spacing system — 8pt grid, consistent across all sections
+const S = {
+  screenPx: 24,      // horizontal screen padding
+  sectionGap: 30,    // vertical gap between sections
+  cardPadLg: 24,     // large card internal padding
+  cardPadSm: 20,     // small card internal padding
+  innerGap: 14,      // gap between elements inside cards
+  titleGap: 14,      // gap between section title and content
+};
+
+// Typography scale
+const T = {
+  greeting:    { fontSize: 30, fontWeight: '700' as const, letterSpacing: -0.5 },
+  subtitleHdr: { fontSize: 16, fontWeight: '400' as const },
+  sectionTitle:{ fontSize: 22, fontWeight: '600' as const, letterSpacing: -0.3 },
+  cardTitleLg: { fontSize: 21, fontWeight: '600' as const, letterSpacing: -0.2 },
+  cardTitleSm: { fontSize: 17, fontWeight: '600' as const },
+  body:        { fontSize: 15, fontWeight: '400' as const, lineHeight: 22 },
+  secondary:   { fontSize: 14, fontWeight: '400' as const, lineHeight: 20 },
+  caption:     { fontSize: 13, fontWeight: '500' as const },
+  button:      { fontSize: 16, fontWeight: '600' as const },
+};
+
+// Radius scale
+const R = {
+  cardLg: 28,
+  cardSm: 22,
+  button: 18,
+  icon:   16,
+};
+
+// Shadow — very soft, premium
+const SHADOW = {
+  shadowColor:   '#1F2A24',
+  shadowOffset:  { width: 0, height: 2 },
+  shadowOpacity: 0.04,
+  shadowRadius:  14,
+  elevation:     2,
+};
+
+// ─── Food Category & Icon Classification ──────────────────────────────────
+const VEGETABLE_KW = ['tomat', 'wortel', 'carrot', 'bayam', 'spinach', 'brokoli', 'broccoli', 'kangkung', 'selada', 'lettuce', 'bawang', 'onion', 'cabai', 'pepper', 'kentang', 'potato', 'timun', 'cucumber', 'terong', 'eggplant', 'labu', 'pumpkin', 'jagung', 'corn', 'kol', 'cabbage', 'paprika', 'sawi', 'seledri', 'celery'];
+const FRUIT_KW     = ['apel', 'apple', 'jeruk', 'orange', 'pisang', 'banana', 'mangga', 'mango', 'semangka', 'watermelon', 'melon', 'anggur', 'grape', 'strawberry', 'nanas', 'pineapple', 'pepaya', 'papaya', 'lemon', 'lime', 'avocado', 'alpukat', 'buah', 'fruit', 'berry', 'kiwi', 'durian', 'rambutan'];
+const PROTEIN_KW   = ['ayam', 'chicken', 'daging', 'beef', 'meat', 'ikan', 'fish', 'telur', 'egg', 'udang', 'shrimp', 'tahu', 'tofu', 'tempe', 'tempeh', 'sosis', 'sausage', 'bakso', 'cumi', 'squid', 'salmon', 'tuna', 'sardine', 'ham', 'bacon', 'nugget'];
+const DAIRY_KW     = ['susu', 'milk', 'keju', 'cheese', 'yogurt', 'mentega', 'butter', 'cream', 'krim', 'whipped', 'dairy'];
+const GRAIN_KW     = ['beras', 'rice', 'roti', 'bread', 'mie', 'noodle', 'pasta', 'tepung', 'flour', 'oat', 'gandum', 'wheat', 'sereal', 'cereal', 'crackers', 'biscuit'];
+
+function getFoodIconAndColor(name: string, isUrgent: boolean): { icon: keyof typeof Feather.glyphMap; bg: string; color: string } {
+  const n = name.toLowerCase();
+  let icon: keyof typeof Feather.glyphMap = 'package';
+  
+  if (VEGETABLE_KW.some(k => n.includes(k))) icon = 'sun';
+  else if (FRUIT_KW.some(k => n.includes(k))) icon = 'heart';
+  else if (PROTEIN_KW.some(k => n.includes(k))) icon = 'target';
+  else if (DAIRY_KW.some(k => n.includes(k))) icon = 'droplet';
+  else if (GRAIN_KW.some(k => n.includes(k))) icon = 'layers';
+
+  return {
+    icon,
+    bg: isUrgent ? C.urgentBg : C.warningBg,
+    color: isUrgent ? C.urgent : C.warning,
+  };
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 function getDaysRemaining(expirationDate: string): number {
@@ -51,13 +115,13 @@ function getGreeting(): string {
 }
 
 /**
- * DashboardScreen — Clean White Kitchen Dashboard
+ * DashboardScreen — Premium Food Saver Home
  *
  * Layout:
- * 1. Header (greeting + avatar)
+ * 1. Header (greeting + avatar inline)
  * 2. Kitchen Summary Card (empty state or stats)
- * 3. Quick Actions (scan, add, fridge check)
- * 4. Use These First (urgent/warning items)
+ * 3. Quick Actions (scrollable row of action cards)
+ * 4. Use These First (urgent/warning items with category icons)
  * 5. Recipe Ideas (contextual CTA)
  */
 export const DashboardScreen: React.FC = () => {
@@ -101,11 +165,10 @@ export const DashboardScreen: React.FC = () => {
   };
 
   // ─── Derived data ────────────────────────────────────────────────────────
-  const firstName  = user?.name?.split(' ')[0] ?? 'Chef';
-  const isEmpty    = items.length === 0;
-  const redCount   = items.filter((i) => i.urgency_status === 'red').length;
+  const firstName   = user?.name?.split(' ')[0] ?? 'Chef';
+  const isEmpty     = items.length === 0;
+  const redCount    = items.filter((i) => i.urgency_status === 'red').length;
   const yellowCount = items.filter((i) => i.urgency_status === 'yellow').length;
-  const greenCount = items.filter((i) => i.urgency_status === 'green').length;
   const expiringCount = redCount + yellowCount;
 
   // Focus items: urgent first, then warning, sorted by expiry date
@@ -113,12 +176,12 @@ export const DashboardScreen: React.FC = () => {
     return items
       .filter((i) => i.urgency_status === 'red' || i.urgency_status === 'yellow')
       .sort((a, b) => {
-        const urgencyOrder = (s: string) => s === 'red' ? 0 : 1;
-        const diff = urgencyOrder(a.urgency_status) - urgencyOrder(b.urgency_status);
+        const order = (s: string) => s === 'red' ? 0 : 1;
+        const diff = order(a.urgency_status) - order(b.urgency_status);
         if (diff !== 0) return diff;
         return new Date(a.expiration_date).getTime() - new Date(b.expiration_date).getTime();
       })
-      .slice(0, 5); // show top 5
+      .slice(0, 5);
   }, [items]);
 
   const hasUrgentItems = focusItems.length > 0;
@@ -134,89 +197,103 @@ export const DashboardScreen: React.FC = () => {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={HC.primary}
-            colors={[HC.primary]}
+            tintColor={C.primary}
+            colors={[C.primary]}
           />
         }
       >
-        {/* ─── 1. Header ─── */}
+
+        {/* ══════════════════════════════════════════════════════════════════
+            1. HEADER
+            ══════════════════════════════════════════════════════════════════ */}
         <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.greeting}>{getGreeting()}, {firstName}</Text>
-            <Text style={styles.subtitle}>What's in your kitchen today?</Text>
+          <View style={styles.headerContent}>
+            <View style={styles.headerTopRow}>
+              <Text style={styles.greeting} numberOfLines={1}>{getGreeting()}, {firstName}</Text>
+              <TouchableOpacity style={styles.avatarBtn} onPress={logout} activeOpacity={0.7}>
+                <Text style={styles.avatarInitial}>{firstName[0].toUpperCase()}</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.headerSubtitle}>What's in your kitchen today?</Text>
           </View>
-          <TouchableOpacity style={styles.avatarBtn} onPress={logout} activeOpacity={0.7}>
-            <Text style={styles.avatarInitial}>{firstName[0].toUpperCase()}</Text>
-          </TouchableOpacity>
         </View>
 
-        {/* ─── Loading ─── */}
+        {/* ── Loading ── */}
         {isLoading && items.length === 0 && (
           <View style={styles.loadingBox}>
-            <ActivityIndicator size="large" color={HC.primary} />
+            <ActivityIndicator size="large" color={C.primary} />
             <Text style={styles.loadingText}>Loading your kitchen...</Text>
           </View>
         )}
 
-        {/* ─── 2. Kitchen Summary Card ─── */}
+        {/* ══════════════════════════════════════════════════════════════════
+            2. KITCHEN SUMMARY CARD
+            ══════════════════════════════════════════════════════════════════ */}
+
+        {/* Empty kitchen */}
         {!isLoading && isEmpty && (
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryIconCircle}>
-              <Feather name="package" size={28} color={HC.primary} />
+          <View style={styles.heroCard}>
+            <View style={styles.heroIconCircle}>
+              <Feather name="package" size={24} color={C.primary} />
             </View>
-            <Text style={styles.summaryTitle}>Your kitchen is empty</Text>
-            <Text style={styles.summaryDesc}>
+            <Text style={styles.heroTitle}>Your kitchen is empty</Text>
+            <Text style={styles.heroDesc}>
               Scan a receipt or add your first ingredient to start reducing food waste.
             </Text>
-            <View style={styles.summaryActions}>
+            <View style={styles.heroActions}>
               <TouchableOpacity
-                style={styles.primaryBtn}
+                style={styles.btnPrimary}
                 onPress={() => navigation.navigate('Scan')}
                 activeOpacity={0.85}
               >
-                <Feather name="camera" size={18} color={HC.white} style={{ marginRight: 8 }} />
-                <Text style={styles.primaryBtnText}>Scan Receipt</Text>
+                <Feather name="camera" size={20} color={C.white} style={{ marginRight: 10 }} />
+                <Text style={styles.btnPrimaryText}>Scan Receipt</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.secondaryBtn}
+                style={styles.btnSecondary}
                 onPress={() => navigation.navigate('FridgeCheck')}
                 activeOpacity={0.8}
               >
-                <Feather name="plus-circle" size={18} color={HC.primary} style={{ marginRight: 8 }} />
-                <Text style={styles.secondaryBtnText}>Add Manually</Text>
+                <Feather name="plus-circle" size={20} color={C.primary} style={{ marginRight: 10 }} />
+                <Text style={styles.btnSecondaryText}>Add Manually</Text>
               </TouchableOpacity>
             </View>
           </View>
         )}
 
+        {/* Kitchen with items */}
         {!isLoading && !isEmpty && (
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryHeader}>
-              <View>
-                <Text style={styles.summaryTitle}>Kitchen Summary</Text>
-                <Text style={styles.summarySubtitle}>Here's what needs your attention today.</Text>
-              </View>
-            </View>
+          <View style={styles.heroCard}>
+            <Text style={styles.heroTitleLeft}>Kitchen Summary</Text>
+            <Text style={styles.heroSubtitleLeft}>Here's what needs your attention today.</Text>
+
             <View style={styles.statsRow}>
+              {/* Total */}
               <View style={styles.statItem}>
-                <View style={[styles.statIconBox, { backgroundColor: HC.softGreen }]}>
-                  <Feather name="box" size={18} color={HC.primary} />
+                <View style={[styles.statIcon, { backgroundColor: C.softGreen }]}>
+                  <Feather name="box" size={20} color={C.primary} />
                 </View>
                 <Text style={styles.statNumber}>{items.length}</Text>
                 <Text style={styles.statLabel}>Ingredients</Text>
               </View>
+
               <View style={styles.statDivider} />
+
+              {/* Expiring */}
               <View style={styles.statItem}>
-                <View style={[styles.statIconBox, { backgroundColor: HC.warningBg }]}>
-                  <Feather name="clock" size={18} color={HC.warning} />
+                <View style={[styles.statIcon, { backgroundColor: C.warningBg }]}>
+                  <Feather name="clock" size={20} color={C.warning} />
                 </View>
                 <Text style={styles.statNumber}>{yellowCount}</Text>
                 <Text style={styles.statLabel}>Expiring Soon</Text>
               </View>
+
               <View style={styles.statDivider} />
+
+              {/* Urgent */}
               <View style={styles.statItem}>
-                <View style={[styles.statIconBox, { backgroundColor: HC.urgentBg }]}>
-                  <Feather name="alert-triangle" size={18} color={HC.urgent} />
+                <View style={[styles.statIcon, { backgroundColor: C.urgentBg }]}>
+                  <Feather name="alert-triangle" size={20} color={C.urgent} />
                 </View>
                 <Text style={styles.statNumber}>{redCount}</Text>
                 <Text style={styles.statLabel}>Urgent</Text>
@@ -225,215 +302,231 @@ export const DashboardScreen: React.FC = () => {
           </View>
         )}
 
-        {/* ─── 3. Quick Actions ─── */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
-        </View>
-        <View style={styles.quickActionsGrid}>
-          <TouchableOpacity
-            style={styles.quickActionCard}
-            onPress={() => navigation.navigate('Scan')}
-            activeOpacity={0.7}
+        {/* ══════════════════════════════════════════════════════════════════
+            3. QUICK ACTIONS
+            ══════════════════════════════════════════════════════════════════ */}
+        <View style={styles.sectionScrollable}>
+          <Text style={styles.sectionTitleScrollable}>Quick Actions</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.qaScrollContent}
+            style={styles.qaScroll}
           >
-            <View style={[styles.quickActionIcon, { backgroundColor: HC.softGreen }]}>
-              <Feather name="camera" size={22} color={HC.primary} />
-            </View>
-            <Text style={styles.quickActionTitle}>Scan Receipt</Text>
-            <Text style={styles.quickActionDesc}>Add items from your grocery receipt</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.quickActionCard}
-            onPress={() => navigation.navigate('FridgeCheck')}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.quickActionIcon, { backgroundColor: '#EEF2FF' }]}>
-              <Feather name="plus-square" size={22} color="#5B6AD0" />
-            </View>
-            <Text style={styles.quickActionTitle}>Add Manually</Text>
-            <Text style={styles.quickActionDesc}>Add ingredients one by one</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.quickActionCard}
-            onPress={() => navigation.navigate('FridgeCheck')}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.quickActionIcon, { backgroundColor: '#FEF7E6' }]}>
-              <Feather name="list" size={22} color="#D4860A" />
-            </View>
-            <Text style={styles.quickActionTitle}>Fridge Check</Text>
-            <Text style={styles.quickActionDesc}>Review inventory before shopping</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ─── 4. Use These First ─── */}
-        {!isEmpty && (
-          <>
-            <View style={styles.sectionHeader}>
-              <View>
-                <Text style={styles.sectionTitle}>Use these first</Text>
-                <Text style={styles.sectionSubtitle}>Ingredients that need your attention today.</Text>
+            <TouchableOpacity
+              style={styles.qaCard}
+              onPress={() => navigation.navigate('Scan')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.qaIcon, { backgroundColor: C.softGreen }]}>
+                <Feather name="camera" size={20} color={C.primary} />
               </View>
-              {hasUrgentItems && (
-                <TouchableOpacity onPress={() => navigation.navigate('FridgeCheck')}>
-                  <Text style={styles.sectionLink}>See all</Text>
-                </TouchableOpacity>
+              <Text style={styles.qaTitle}>Scan Receipt</Text>
+              <Text style={styles.qaDesc}>Add items from receipt</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.qaCard}
+              onPress={() => navigation.navigate('FridgeCheck')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.qaIcon, { backgroundColor: '#EEF1FF' }]}>
+                <Feather name="plus-square" size={20} color="#5B6AD0" />
+              </View>
+              <Text style={styles.qaTitle}>Add Manually</Text>
+              <Text style={styles.qaDesc}>Add ingredients one by one</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.qaCard}
+              onPress={() => navigation.navigate('FridgeCheck')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.qaIcon, { backgroundColor: C.warningBg }]}>
+                <Feather name="list" size={20} color="#D4860A" />
+              </View>
+              <Text style={styles.qaTitle}>Fridge Check</Text>
+              <Text style={styles.qaDesc}>Review before shopping</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+
+        {/* ══════════════════════════════════════════════════════════════════
+            4. USE THESE FIRST
+            ══════════════════════════════════════════════════════════════════ */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sectionTitle}>Use these first</Text>
+              {!isEmpty && (
+                <Text style={styles.sectionSubtitle}>
+                  Ingredients that need your attention today.
+                </Text>
               )}
             </View>
+            {hasUrgentItems && (
+              <TouchableOpacity
+                onPress={() => navigation.navigate('FridgeCheck')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.sectionLink}>See all</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
-            {hasUrgentItems ? (
-              <View style={styles.focusList}>
-                {focusItems.map((item) => {
-                  const days = getDaysRemaining(item.expiration_date);
-                  const isUrgent = item.urgency_status === 'red';
-                  return (
-                    <TouchableOpacity
-                      key={item.id}
-                      style={styles.focusCard}
-                      onPress={() => {
-                        if (item.is_scalable) handleSliderOpen(item.id);
-                      }}
-                      activeOpacity={item.is_scalable ? 0.7 : 1}
-                    >
-                      <View style={[
-                        styles.focusAccent,
-                        { backgroundColor: isUrgent ? HC.urgent : HC.warning }
-                      ]} />
-                      <View style={styles.focusContent}>
-                        <View style={styles.focusTop}>
-                          <View style={styles.focusInfo}>
-                            <Text style={styles.focusName} numberOfLines={1}>
-                              {item.product_name}
-                            </Text>
-                            <Text style={styles.focusMeta}>
-                              {parseFloat(item.quantity.toString()).toFixed(1)} {item.unit} · {expiryText(days)}
-                            </Text>
-                          </View>
-                          <View style={[
-                            styles.statusBadge,
-                            { backgroundColor: isUrgent ? HC.urgentBg : HC.warningBg }
-                          ]}>
-                            <View style={[
-                              styles.statusDot,
-                              { backgroundColor: isUrgent ? HC.urgent : HC.warning }
-                            ]} />
-                            <Text style={[
-                              styles.statusText,
-                              { color: isUrgent ? HC.urgent : HC.warning }
-                            ]}>
-                              {isUrgent ? 'Urgent' : 'Warning'}
-                            </Text>
-                          </View>
-                        </View>
+          {/* ── Has urgent/warning items ── */}
+          {hasUrgentItems && (
+            <View style={styles.focusList}>
+              {focusItems.map((item) => {
+                const days = getDaysRemaining(item.expiration_date);
+                const isUrgent = item.urgency_status === 'red';
+                const iconInfo = getFoodIconAndColor(item.product_name, isUrgent);
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.focusCard}
+                    onPress={() => { if (item.is_scalable) handleSliderOpen(item.id); }}
+                    activeOpacity={item.is_scalable ? 0.7 : 1}
+                  >
+                    <View style={styles.focusCardInner}>
+                      <View style={[styles.focusIconContainer, { backgroundColor: iconInfo.bg }]}>
+                        <Feather name={iconInfo.icon} size={20} color={iconInfo.color} />
                       </View>
-                      {/* Delete action */}
-                      <TouchableOpacity
-                        style={styles.focusDeleteBtn}
-                        onPress={() => handleDelete(item.id)}
-                        activeOpacity={0.7}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Feather name="trash-2" size={16} color={HC.textMuted} />
-                      </TouchableOpacity>
+                      <View style={styles.focusTextContainer}>
+                        <Text style={styles.focusName} numberOfLines={1}>
+                          {item.product_name}
+                        </Text>
+                        <Text style={styles.focusMeta}>
+                          {parseFloat(item.quantity.toString()).toFixed(1)} {item.unit} · {expiryText(days)}
+                        </Text>
+                      </View>
+                      <View style={[
+                        styles.badge,
+                        { backgroundColor: isUrgent ? C.urgentBg : C.warningBg }
+                      ]}>
+                        <View style={[
+                          styles.badgeDot,
+                          { backgroundColor: isUrgent ? C.urgent : C.warning }
+                        ]} />
+                        <Text style={[
+                          styles.badgeText,
+                          { color: isUrgent ? C.urgent : C.warning }
+                        ]}>
+                          {isUrgent ? 'Urgent' : 'Warning'}
+                        </Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.focusDeleteBtn}
+                      onPress={() => handleDelete(item.id)}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Feather name="trash-2" size={18} color={C.textMuted} />
                     </TouchableOpacity>
-                  );
-                })}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+
+          {/* ── No urgent items (but inventory exists) ── */}
+          {!isEmpty && !hasUrgentItems && (
+            <View style={styles.emptyMini}>
+              <View style={[styles.emptyMiniIcon, { backgroundColor: C.softGreen }]}>
+                <Feather name="check-circle" size={18} color={C.primary} />
               </View>
-            ) : (
-              <View style={styles.positiveCard}>
-                <View style={[styles.positiveIconBox, { backgroundColor: HC.softGreen }]}>
-                  <Feather name="check-circle" size={22} color={HC.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.emptyMiniTitle}>All good!</Text>
+                <Text style={styles.emptyMiniDesc}>
+                  No urgent ingredients. Your kitchen is looking great.
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* ── Empty inventory ── */}
+          {isEmpty && !isLoading && (
+            <View style={styles.emptyMini}>
+              <View style={[styles.emptyMiniIcon, { backgroundColor: C.surface }]}>
+                <Feather name="inbox" size={18} color={C.textMuted} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.emptyMiniTitle}>Nothing to use yet</Text>
+                <Text style={styles.emptyMiniDesc}>
+                  Add ingredients to see what needs your attention.
+                </Text>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* ══════════════════════════════════════════════════════════════════
+            5. RECIPE IDEAS
+            ══════════════════════════════════════════════════════════════════ */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <View>
+              <Text style={styles.sectionTitle}>Recipe Ideas</Text>
+              <Text style={styles.sectionSubtitle}>Cook before it goes to waste.</Text>
+            </View>
+          </View>
+
+          {hasUrgentItems ? (
+            <TouchableOpacity
+              style={styles.recipeCard}
+              onPress={() => navigation.navigate('Recipe')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.recipeInner}>
+                <View style={styles.recipeIconBox}>
+                  <Feather name="book-open" size={22} color={C.primary} />
                 </View>
-                <View style={styles.positiveContent}>
-                  <Text style={styles.positiveTitle}>All good!</Text>
-                  <Text style={styles.positiveDesc}>
-                    No urgent ingredients. Your kitchen is looking great.
+                <View style={styles.recipeContent}>
+                  <Text style={styles.recipeTitle}>Cook before it goes to waste</Text>
+                  <Text style={styles.recipeDesc}>
+                    Generate recipe ideas from ingredients that expire soon.
                   </Text>
                 </View>
               </View>
-            )}
-          </>
-        )}
-
-        {isEmpty && !isLoading && (
-          <>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Use these first</Text>
-            </View>
-            <View style={styles.positiveCard}>
-              <View style={[styles.positiveIconBox, { backgroundColor: HC.surface }]}>
-                <Feather name="inbox" size={22} color={HC.textMuted} />
+              <View style={styles.recipeCta}>
+                <Text style={styles.recipeCtaText}>Generate Recipe</Text>
+                <Feather name="arrow-right" size={16} color={C.primary} />
               </View>
-              <View style={styles.positiveContent}>
-                <Text style={styles.positiveDesc}>
-                  Add your first ingredients to see what needs attention.
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.recipeCard}
+              onPress={() => isEmpty ? navigation.navigate('FridgeCheck') : navigation.navigate('Recipe')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.recipeInner}>
+                <View style={styles.recipeIconBox}>
+                  <Feather name={isEmpty ? 'plus-circle' : 'check-circle'} size={22} color={C.primary} />
+                </View>
+                <View style={styles.recipeContent}>
+                  <Text style={styles.recipeTitle}>
+                    {isEmpty ? 'Get started with recipes' : 'Your kitchen is under control'}
+                  </Text>
+                  <Text style={styles.recipeDesc}>
+                    {isEmpty
+                      ? 'Add ingredients to get personalised recipe ideas.'
+                      : 'Add more ingredients or check your fridge to get recipe ideas.'}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.recipeCta}>
+                <Text style={styles.recipeCtaText}>
+                  {isEmpty ? 'Add Ingredients' : 'View Recipes'}
                 </Text>
+                <Feather name="arrow-right" size={16} color={C.primary} />
               </View>
-            </View>
-          </>
-        )}
-
-        {/* ─── 5. Recipe Ideas ─── */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Recipe Ideas</Text>
-          <Text style={styles.sectionSubtitleInline}>Cook before it goes to waste.</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
-        {hasUrgentItems ? (
-          <TouchableOpacity
-            style={styles.recipeCard}
-            onPress={() => navigation.navigate('Recipe')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.recipeCardInner}>
-              <View style={[styles.recipeIconBox, { backgroundColor: HC.softGreen }]}>
-                <Feather name="book-open" size={24} color={HC.primary} />
-              </View>
-              <View style={styles.recipeCardContent}>
-                <Text style={styles.recipeCardTitle}>Turn expiring ingredients into meals</Text>
-                <Text style={styles.recipeCardDesc}>
-                  Generate recipes based on {expiringCount} ingredient{expiringCount > 1 ? 's' : ''} that need to be used first.
-                </Text>
-              </View>
-            </View>
-            <View style={styles.recipeCardCta}>
-              <Text style={styles.recipeCardCtaText}>Generate Recipe</Text>
-              <Feather name="arrow-right" size={16} color={HC.primary} />
-            </View>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={styles.recipeCard}
-            onPress={() => isEmpty ? navigation.navigate('FridgeCheck') : navigation.navigate('Recipe')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.recipeCardInner}>
-              <View style={[styles.recipeIconBox, { backgroundColor: HC.softGreen }]}>
-                <Feather name={isEmpty ? 'plus-circle' : 'check-circle'} size={24} color={HC.primary} />
-              </View>
-              <View style={styles.recipeCardContent}>
-                <Text style={styles.recipeCardTitle}>
-                  {isEmpty ? 'Get started with recipes' : 'Your kitchen is under control'}
-                </Text>
-                <Text style={styles.recipeCardDesc}>
-                  {isEmpty
-                    ? 'Add ingredients to get personalised recipe ideas.'
-                    : 'Add more ingredients or check your fridge to get recipe ideas.'}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.recipeCardCta}>
-              <Text style={styles.recipeCardCtaText}>
-                {isEmpty ? 'Add Ingredients' : 'View Recipes'}
-              </Text>
-              <Feather name="arrow-right" size={16} color={HC.primary} />
-            </View>
-          </TouchableOpacity>
-        )}
-
-        {/* Bottom spacing */}
-        <View style={{ height: 32 }} />
+        {/* Bottom safe area */}
+        <View style={{ height: 40 }} />
       </ScrollView>
 
       {/* ─── Consumption Slider Modal ─── */}
@@ -452,126 +545,127 @@ export const DashboardScreen: React.FC = () => {
   );
 };
 
-// ─── Styles ─────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// STYLES
+// ═══════════════════════════════════════════════════════════════════════════════
 const styles = StyleSheet.create({
   screen: {
-    flex: 1,
-    backgroundColor: HC.bg,
+    flex:            1,
+    backgroundColor: C.bg,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 32,
+    paddingBottom: 40,
   },
 
-  // ─── Header ───
+  // ─── Header ──────────────────────────────────────────────────────────────
   header: {
-    flexDirection:     'row',
-    alignItems:        'center',
-    justifyContent:    'space-between',
-    paddingHorizontal: 24,
-    paddingTop:        Platform.OS === 'ios' ? 60 : 48,
-    paddingBottom:     20,
+    paddingHorizontal: S.screenPx,
+    paddingTop:        Platform.OS === 'ios' ? 62 : 52,
+    paddingBottom:     S.sectionGap,
   },
-  headerLeft: {
-    flex: 1,
+  headerContent: {
+    width: '100%',
   },
-  greeting: {
-    color:         HC.textPrimary,
-    fontSize:      22,
-    fontWeight:    '700',
-    letterSpacing: -0.3,
-  },
-  subtitle: {
-    color:     HC.textSecondary,
-    fontSize:  14,
-    marginTop: 4,
-  },
-  avatarBtn: {
-    width:           42,
-    height:          42,
-    borderRadius:    21,
-    backgroundColor: HC.softGreen,
-    borderWidth:     1.5,
-    borderColor:     HC.primary,
-    alignItems:      'center',
-    justifyContent:  'center',
-    marginLeft:      16,
-  },
-  avatarInitial: {
-    color:      HC.primary,
-    fontSize:   17,
-    fontWeight: '700',
-  },
-
-  // ─── Loading ───
-  loadingBox: {
-    alignItems:      'center',
-    justifyContent:  'center',
-    paddingVertical: 48,
-  },
-  loadingText: {
-    color:     HC.textSecondary,
-    fontSize:  14,
-    marginTop: 12,
-  },
-
-  // ─── Kitchen Summary Card ───
-  summaryCard: {
-    backgroundColor: HC.white,
-    borderRadius:    24,
-    marginHorizontal: 20,
-    marginBottom:    8,
-    padding:         24,
-    borderWidth:     1,
-    borderColor:     HC.border,
-    shadowColor:     HC.cardShadow,
-    shadowOffset:    { width: 0, height: 2 },
-    shadowOpacity:   0.05,
-    shadowRadius:    12,
-    elevation:       3,
-  },
-  summaryHeader: {
+  headerTopRow: {
     flexDirection:  'row',
     alignItems:     'center',
     justifyContent: 'space-between',
-    marginBottom:   20,
+    width:          '100%',
   },
-  summaryIconCircle: {
-    width:           56,
-    height:          56,
-    borderRadius:    28,
-    backgroundColor: HC.softGreen,
+  greeting: {
+    color:         C.textPrimary,
+    flex:          1,
+    marginRight:   16,
+    ...T.greeting,
+  },
+  headerSubtitle: {
+    color:     C.textSecondary,
+    ...T.subtitleHdr,
+    marginTop: 8,
+  },
+  avatarBtn: {
+    width:           40,
+    height:          40,
+    borderRadius:    20,
+    backgroundColor: C.softGreen,
+    borderWidth:     1,
+    borderColor:     C.border,
+    alignItems:      'center',
+    justifyContent:  'center',
+  },
+  avatarInitial: {
+    color:      C.primary,
+    fontSize:   16,
+    fontWeight: '600',
+  },
+
+  // ─── Loading ─────────────────────────────────────────────────────────────
+  loadingBox: {
+    alignItems:      'center',
+    justifyContent:  'center',
+    paddingVertical: 56,
+  },
+  loadingText: {
+    color:     C.textSecondary,
+    ...T.secondary,
+    marginTop: 14,
+  },
+
+  // ─── Hero Card (Kitchen Summary / Empty) ─────────────────────────────────
+  heroCard: {
+    backgroundColor:  C.white,
+    borderRadius:     R.cardLg,
+    marginHorizontal: S.screenPx,
+    padding:          S.cardPadLg,
+    borderWidth:      1,
+    borderColor:      C.border,
+    ...SHADOW,
+  },
+
+  // Empty variant — centered
+  heroIconCircle: {
+    width:           48,
+    height:          48,
+    borderRadius:    24,
+    backgroundColor: C.softGreen,
     alignItems:      'center',
     justifyContent:  'center',
     alignSelf:       'center',
     marginBottom:    16,
   },
-  summaryTitle: {
-    color:         HC.textPrimary,
-    fontSize:      18,
-    fontWeight:    '700',
-    letterSpacing: -0.3,
+  heroTitle: {
+    color:     C.textPrimary,
+    ...T.cardTitleLg,
+    textAlign: 'center',
   },
-  summarySubtitle: {
-    color:     HC.textSecondary,
-    fontSize:  13,
-    marginTop: 3,
+  heroDesc: {
+    color:        C.textSecondary,
+    ...T.body,
+    textAlign:    'center',
+    marginTop:    8,
+    marginBottom: 22,
   },
-  summaryDesc: {
-    color:      HC.textSecondary,
-    fontSize:   14,
-    textAlign:  'center',
-    lineHeight: 22,
-    marginBottom: 20,
-  },
-  summaryActions: {
+  heroActions: {
     width: '100%',
-    gap:   10,
+    gap:   12,
   },
 
-  // ─── Stats row ───
+  // Filled variant — left-aligned
+  heroTitleLeft: {
+    color: C.textPrimary,
+    ...T.cardTitleLg,
+  },
+  heroSubtitleLeft: {
+    color:        C.textSecondary,
+    ...T.secondary,
+    marginTop:    4,
+    marginBottom: 22,
+  },
+
+  // ─── Stats row ───────────────────────────────────────────────────────────
   statsRow: {
     flexDirection:  'row',
     alignItems:     'center',
@@ -581,285 +675,274 @@ const styles = StyleSheet.create({
     flex:       1,
     alignItems: 'center',
   },
-  statIconBox: {
-    width:        40,
-    height:       40,
-    borderRadius: 12,
-    alignItems:   'center',
+  statIcon: {
+    width:          44,
+    height:         44,
+    borderRadius:   R.icon,
+    alignItems:     'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom:   10,
   },
   statNumber: {
-    color:      HC.textPrimary,
-    fontSize:   20,
+    color:      C.textPrimary,
+    fontSize:   22,
     fontWeight: '700',
   },
   statLabel: {
-    color:     HC.textSecondary,
-    fontSize:  11,
-    fontWeight: '500',
-    marginTop: 2,
+    color:     C.textSecondary,
+    ...T.caption,
+    marginTop: 3,
   },
   statDivider: {
     width:           1,
-    height:          40,
-    backgroundColor: HC.border,
+    height:          44,
+    backgroundColor: C.border,
   },
 
-  // ─── Buttons ───
-  primaryBtn: {
-    backgroundColor: HC.primary,
-    borderRadius:    14,
-    height:          50,
+  // ─── Buttons ─────────────────────────────────────────────────────────────
+  btnPrimary: {
+    backgroundColor: C.primary,
+    borderRadius:    R.button,
+    height:          56,
     alignItems:      'center',
     justifyContent:  'center',
     flexDirection:   'row',
   },
-  primaryBtnText: {
-    color:      HC.white,
-    fontSize:   15,
-    fontWeight: '700',
+  btnPrimaryText: {
+    color: C.white,
+    ...T.button,
   },
-  secondaryBtn: {
-    backgroundColor: HC.white,
-    borderRadius:    14,
-    height:          50,
+  btnSecondary: {
+    backgroundColor: C.white,
+    borderRadius:    R.button,
+    height:          56,
     alignItems:      'center',
     justifyContent:  'center',
     flexDirection:   'row',
-    borderWidth:     1.5,
-    borderColor:     HC.border,
+    borderWidth:     1,
+    borderColor:     C.primary,
   },
-  secondaryBtnText: {
-    color:      HC.primary,
-    fontSize:   15,
-    fontWeight: '600',
+  btnSecondaryText: {
+    color: C.primary,
+    ...T.button,
   },
 
-  // ─── Section ───
-  sectionHeader: {
-    paddingHorizontal: 24,
-    paddingTop:        24,
-    paddingBottom:     4,
-    flexDirection:     'row',
-    alignItems:        'flex-end',
-    justifyContent:    'space-between',
+  // ─── Section ─────────────────────────────────────────────────────────────
+  section: {
+    marginTop: S.sectionGap,
+    paddingHorizontal: S.screenPx,
+  },
+  sectionScrollable: {
+    marginTop: S.sectionGap,
+  },
+  sectionTitleScrollable: {
+    color: C.textPrimary,
+    paddingHorizontal: S.screenPx,
+    ...T.sectionTitle,
+  },
+  sectionHeaderRow: {
+    flexDirection:  'row',
+    alignItems:     'flex-start',
+    justifyContent: 'space-between',
+    marginBottom:   S.titleGap,
   },
   sectionTitle: {
-    color:         HC.textPrimary,
-    fontSize:      17,
-    fontWeight:    '700',
-    letterSpacing: -0.2,
+    color: C.textPrimary,
+    ...T.sectionTitle,
   },
   sectionSubtitle: {
-    color:     HC.textSecondary,
-    fontSize:  13,
-    marginTop: 2,
-  },
-  sectionSubtitleInline: {
-    color:    HC.textSecondary,
-    fontSize: 12,
+    color:     C.textSecondary,
+    ...T.secondary,
+    marginTop: 4,
   },
   sectionLink: {
-    color:      HC.primary,
-    fontSize:   13,
+    color:      C.primary,
+    ...T.caption,
     fontWeight: '600',
+    marginTop:  4,
   },
 
-  // ─── Quick Actions Grid ───
-  quickActionsGrid: {
-    flexDirection:     'row',
-    paddingHorizontal: 20,
-    paddingTop:        12,
-    gap:               10,
+  // ─── Quick Actions (Scrollable) ──────────────────────────────────────────
+  qaScroll: {
+    marginTop: S.titleGap,
   },
-  quickActionCard: {
-    flex:            1,
-    backgroundColor: HC.white,
-    borderRadius:    18,
-    padding:         16,
+  qaScrollContent: {
+    paddingHorizontal: S.screenPx,
+    paddingBottom:     8, // shadow visibility
+    gap:               12,
+  },
+  qaCard: {
+    width:           156,
+    backgroundColor: C.white,
+    borderRadius:    R.cardSm,
+    padding:         S.cardPadSm,
     borderWidth:     1,
-    borderColor:     HC.border,
-    shadowColor:     HC.cardShadow,
-    shadowOffset:    { width: 0, height: 1 },
-    shadowOpacity:   0.04,
-    shadowRadius:    6,
-    elevation:       2,
+    borderColor:     C.border,
+    ...SHADOW,
   },
-  quickActionIcon: {
-    width:        42,
-    height:       42,
-    borderRadius: 13,
-    alignItems:   'center',
+  qaIcon: {
+    width:          48,
+    height:         48,
+    borderRadius:   R.icon,
+    alignItems:     'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom:   S.innerGap,
   },
-  quickActionTitle: {
-    color:      HC.textPrimary,
+  qaTitle: {
+    color:        C.textPrimary,
+    fontSize:     16,
+    fontWeight:   '600',
+    marginBottom: 6,
+  },
+  qaDesc: {
+    color:      C.textSecondary,
     fontSize:   13,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  quickActionDesc: {
-    color:      HC.textSecondary,
-    fontSize:   11,
-    lineHeight: 15,
+    lineHeight: 18,
   },
 
-  // ─── Focus Items ───
+  // ─── Focus Items ─────────────────────────────────────────────────────────
   focusList: {
-    paddingHorizontal: 20,
-    paddingTop:        8,
-    gap:               8,
+    gap: 10,
   },
   focusCard: {
     flexDirection:   'row',
-    backgroundColor: HC.white,
-    borderRadius:    16,
-    overflow:        'hidden',
-    borderWidth:     1,
-    borderColor:     HC.border,
-    shadowColor:     HC.cardShadow,
-    shadowOffset:    { width: 0, height: 1 },
-    shadowOpacity:   0.04,
-    shadowRadius:    6,
-    elevation:       2,
     alignItems:      'center',
+    backgroundColor: C.white,
+    borderRadius:    R.cardSm,
+    borderWidth:     1,
+    borderColor:     C.border,
+    paddingRight:    8,
+    ...SHADOW,
   },
-  focusAccent: {
-    width: 4,
-    alignSelf: 'stretch',
-  },
-  focusContent: {
-    flex:    1,
-    padding: 14,
-  },
-  focusTop: {
-    flexDirection:  'row',
-    alignItems:     'center',
-    justifyContent: 'space-between',
-    gap:            8,
-  },
-  focusInfo: {
+  focusCardInner: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingLeft: 16,
+  },
+  focusIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  focusTextContainer: {
+    flex: 1,
+    marginRight: 8,
   },
   focusName: {
-    color:      HC.textPrimary,
-    fontSize:   15,
+    color: C.textPrimary,
+    ...T.body,
     fontWeight: '600',
   },
   focusMeta: {
-    color:     HC.textSecondary,
-    fontSize:  12,
-    marginTop: 3,
+    color:      C.textSecondary,
+    ...T.caption,
+    fontWeight: '400',
+    marginTop:  2,
   },
-  statusBadge: {
+  badge: {
     flexDirection:     'row',
     alignItems:        'center',
-    paddingVertical:   4,
-    paddingHorizontal: 10,
+    paddingVertical:   5,
+    paddingHorizontal: 12,
     borderRadius:      20,
-    gap:               5,
+    gap:               6,
   },
-  statusDot: {
+  badgeDot: {
     width:        6,
     height:       6,
     borderRadius: 3,
   },
-  statusText: {
-    fontSize:   11,
+  badgeText: {
+    fontSize:   12,
     fontWeight: '600',
   },
   focusDeleteBtn: {
-    paddingHorizontal: 14,
-    paddingVertical:   14,
+    paddingHorizontal: 16,
+    paddingVertical:   16,
   },
 
-  // ─── Positive card ───
-  positiveCard: {
-    flexDirection:     'row',
-    alignItems:        'center',
-    backgroundColor:   HC.white,
-    borderRadius:      16,
-    marginHorizontal:  20,
-    marginTop:         8,
-    padding:           16,
-    borderWidth:       1,
-    borderColor:       HC.border,
-    gap:               14,
+  // ─── Empty mini card (Use These First) ───────────────────────────────────
+  emptyMini: {
+    flexDirection:   'row',
+    alignItems:      'center',
+    backgroundColor: C.surface,
+    borderRadius:    R.cardSm,
+    padding:         S.cardPadSm,
+    gap:             S.innerGap,
+    borderWidth:     1,
+    borderColor:     C.border,
   },
-  positiveIconBox: {
-    width:        44,
-    height:       44,
-    borderRadius: 14,
-    alignItems:   'center',
+  emptyMiniIcon: {
+    width:          48,
+    height:         48,
+    borderRadius:   R.icon,
+    alignItems:     'center',
     justifyContent: 'center',
   },
-  positiveContent: {
-    flex: 1,
-  },
-  positiveTitle: {
-    color:      HC.textPrimary,
-    fontSize:   14,
-    fontWeight: '700',
+  emptyMiniTitle: {
+    color: C.textPrimary,
+    ...T.body,
+    fontWeight: '600',
     marginBottom: 3,
   },
-  positiveDesc: {
-    color:      HC.textSecondary,
-    fontSize:   13,
-    lineHeight: 19,
+  emptyMiniDesc: {
+    color: C.textSecondary,
+    ...T.secondary,
   },
 
-  // ─── Recipe Ideas Card ───
+  // ─── Recipe Ideas Card ───────────────────────────────────────────────────
   recipeCard: {
-    backgroundColor:   HC.softGreen,
-    borderRadius:      20,
-    marginHorizontal:  20,
-    marginTop:         12,
-    padding:           20,
-    borderWidth:       1,
-    borderColor:       '#D4E8DC',
+    backgroundColor: C.softGreen,
+    borderRadius:    R.cardLg,
+    padding:         S.cardPadLg,
+    borderWidth:     1,
+    borderColor:     '#D4E8DC',
   },
-  recipeCardInner: {
+  recipeInner: {
     flexDirection: 'row',
     alignItems:    'flex-start',
-    gap:           14,
-    marginBottom:  16,
+    gap:           S.innerGap,
+    marginBottom:  18,
   },
   recipeIconBox: {
-    width:        48,
-    height:       48,
-    borderRadius: 16,
-    backgroundColor: HC.white,
-    alignItems:   'center',
-    justifyContent: 'center',
+    width:           52,
+    height:          52,
+    borderRadius:    R.icon,
+    backgroundColor: C.white,
+    alignItems:      'center',
+    justifyContent:  'center',
   },
-  recipeCardContent: {
+  recipeContent: {
     flex: 1,
   },
-  recipeCardTitle: {
-    color:      HC.textPrimary,
-    fontSize:   15,
-    fontWeight: '700',
-    marginBottom: 4,
+  recipeTitle: {
+    color: C.textPrimary,
+    ...T.cardTitleSm,
+    marginBottom: 5,
   },
-  recipeCardDesc: {
-    color:      HC.textSecondary,
-    fontSize:   13,
-    lineHeight: 19,
+  recipeDesc: {
+    color: C.textSecondary,
+    ...T.secondary,
   },
-  recipeCardCta: {
+  recipeCta: {
     flexDirection:   'row',
     alignItems:      'center',
     justifyContent:  'center',
-    backgroundColor: HC.white,
-    borderRadius:    12,
-    paddingVertical: 12,
-    gap:             6,
+    backgroundColor: C.white,
+    borderRadius:    16,
+    paddingVertical: 14,
+    gap:             8,
+    borderWidth:     1,
+    borderColor:     C.border,
+    ...SHADOW,
   },
-  recipeCardCtaText: {
-    color:      HC.primary,
-    fontSize:   14,
-    fontWeight: '700',
+  recipeCtaText: {
+    color: C.primary,
+    ...T.button,
   },
 });
