@@ -60,10 +60,8 @@ class ProcessReceiptOCR implements ShouldQueue
                     continue;
                 }
 
-                // Classify item: storage location + shelf life
-                $classification = $gemini->classifyFoodItem($item['product_name']);
-                $storageLocation = $classification['storage_location'] ?? 'room_temp';
-                $isScalable      = $classification['is_scalable'] ?? false;
+                $storageLocation = $item['storage_location'] ?? 'room_temp';
+                $isScalable      = $item['is_scalable'] ?? false;
 
                 // Calculate expiration date
                 $expirationDate = $expiry->calculate($item['product_name'], $storageLocation);

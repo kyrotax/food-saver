@@ -40,12 +40,23 @@ Schedule::call(function () {
  */
 Schedule::call(function () {
     $currentTime = now()->format('H:i');
+    $today       = now()->toDateString();
 
     $users = \App\Models\User::whereTime('notification_time', $currentTime)
-        ->whereNotNull('fcm_token')
+        ->whereHas('fcmTokens')
         ->get();
 
     foreach ($users as $user) {
+        // Prevent duplicate alerts on the same day
+        $alreadyLogged = \App\Models\NotificationLog::where('user_id', $user->id)
+            ->where('notification_type', 'expiration_alert')
+            ->where('scheduled_for', $today)
+            ->exists();
+
+        if ($alreadyLogged) {
+            continue;
+        }
+
         $urgentItems = \App\Models\FoodItem::where('user_id', $user->id)
             ->whereIn('urgency_status', ['yellow', 'red'])
             ->get();
@@ -59,6 +70,15 @@ Schedule::call(function () {
             $urgentItems
         );
 
-        app(\App\Services\FCMService::class)->sendToDevice($user->fcm_token, $message);
+        // Record pending log to prevent race conditions during queue processing
+        $logEntry = \App\Models\NotificationLog::create([
+            'user_id'           => $user->id,
+            'notification_type' => 'expiration_alert',
+            'scheduled_for'     => $today,
+            'status'            => 'pending',
+        ]);
+
+        // Dispatch async FCM push notification job
+        \App\Jobs\SendPushNotification::dispatch($user->id, $message, $logEntry->id);
     }
 })->everyMinute()->name('dispatch-notifications');

@@ -36,6 +36,8 @@ Each element must have exactly these fields:
 - "product_name": string (clean, readable product name in Indonesian or English)
 - "quantity": number (decimal allowed, e.g. 0.5, 1, 250)
 - "unit": string (e.g. "pcs", "kg", "g", "liter", "ml", "bungkus", "botol")
+- "storage_location": string (determine optimal storage, must be one of: "freezer", "chiller", or "room_temp")
+- "is_scalable": boolean (true if this is a packaged pantry good measured by percentage like oil, sugar, salt, flour, sauce, syrup; false for fresh products, meats, fruits, vegetables, or individual count items)
 
 Ignore: prices, totals, tax amounts, store names, cashier codes, payment info.
 

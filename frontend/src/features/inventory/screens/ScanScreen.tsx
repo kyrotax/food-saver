@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   Alert, ActivityIndicator, Image, Platform, ScrollView,
+  TextInput,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
-import { useInventoryStore } from '@features/inventory/store/inventoryStore';
+import { useInventoryStore, DraftFoodItem } from '@features/inventory/store/inventoryStore';
 import { useOfflineQueueStore } from '@features/inventory/store/offlineQueueStore';
 import { isConnected } from '@core/connectivity/netInfo';
 import { Feather } from '@expo/vector-icons';
@@ -83,6 +84,40 @@ export const ScanScreen: React.FC = () => {
   const [statusType,  setStatusType]  = useState<'success_online' | 'success_offline' | 'error' | null>(null);
   const [statusMsg,   setStatusMsg]   = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
+  const [draftItems,  setDraftItems]  = useState<DraftFoodItem[] | null>(null);
+  const [isSaving,    setIsSaving]    = useState(false);
+
+  const updateDraftItem = (index: number, key: keyof DraftFoodItem, value: any) => {
+    if (!draftItems) return;
+    const updated = [...draftItems];
+    updated[index] = { ...updated[index], [key]: value };
+    setDraftItems(updated);
+  };
+
+  const deleteDraftItem = (index: number) => {
+    if (!draftItems) return;
+    const updated = draftItems.filter((_, i) => i !== index);
+    setDraftItems(updated.length > 0 ? updated : null);
+  };
+
+  const handleSaveDrafts = async () => {
+    if (!draftItems) return;
+    setIsSaving(true);
+    try {
+      const { addItems } = useInventoryStore.getState();
+      const validatedItems = draftItems.map(item => ({
+        ...item,
+        quantity: parseFloat(String(item.quantity)) || 1
+      }));
+      await addItems(validatedItems);
+      Alert.alert('Success', 'Ingredients saved to kitchen successfully!');
+      navigation.goBack();
+    } catch (err: any) {
+      Alert.alert('Error', err.message ?? 'Failed to save items.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const pickFromCamera = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -99,6 +134,7 @@ export const ScanScreen: React.FC = () => {
       setImageUri(result.assets[0].uri);
       setStatusType(null);
       setStatusMsg('');
+      setDraftItems(null);
     }
   };
 
@@ -116,6 +152,7 @@ export const ScanScreen: React.FC = () => {
       setImageUri(result.assets[0].uri);
       setStatusType(null);
       setStatusMsg('');
+      setDraftItems(null);
     }
   };
 
@@ -129,10 +166,13 @@ export const ScanScreen: React.FC = () => {
       const online = await isConnected();
 
       if (online) {
-        await scanReceipt(imageUri);
-        setStatusType('success_online');
-        setStatusMsg('Receipt scanned successfully. Review detected ingredients before adding them to your kitchen.');
-        setTimeout(() => navigation.goBack(), 3500);
+        const parsed = await scanReceipt(imageUri);
+        if (parsed && parsed.length > 0) {
+          setDraftItems(parsed);
+        } else {
+          setStatusType('error');
+          setStatusMsg('No ingredients could be detected from the receipt. Please try another photo.');
+        }
       } else {
         // Queue for later sync
         await enqueue(imageUri);
@@ -148,7 +188,137 @@ export const ScanScreen: React.FC = () => {
     }
   };
 
-  const isButtonsDisabled = isUploading || isScanLoading;
+  const isButtonsDisabled = isUploading || isScanLoading || isSaving;
+
+  if (draftItems) {
+    return (
+      <View style={styles.container}>
+        {/* ─── Header ─── */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => setDraftItems(null)} hitSlop={12} style={styles.backBtn}>
+            <Feather name="arrow-left" size={24} color={C.textPrimary} />
+          </TouchableOpacity>
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle}>Review Ingredients</Text>
+            <Text style={styles.headerSubtitle}>Confirm detected food items</Text>
+          </View>
+        </View>
+
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <View style={{ marginHorizontal: S.screenPx, marginBottom: 16 }}>
+            <Text style={styles.helperTitle}>Edit detected items:</Text>
+          </View>
+
+          {draftItems.map((item, index) => (
+            <View key={index} style={styles.draftCard}>
+              <View style={styles.draftCardHeader}>
+                <Text style={styles.draftIndex}>Bahan #{index + 1}</Text>
+                <TouchableOpacity onPress={() => deleteDraftItem(index)} style={styles.deleteBtn}>
+                  <Feather name="trash-2" size={18} color={C.urgent} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Name input */}
+              <Text style={styles.inputLabel}>Nama Bahan</Text>
+              <TextInput
+                style={styles.textInput}
+                value={item.product_name}
+                onChangeText={(val) => updateDraftItem(index, 'product_name', val)}
+                placeholder="Nama produk"
+                placeholderTextColor={C.textMuted}
+              />
+
+              <View style={styles.inputRow}>
+                {/* Quantity input */}
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={styles.inputLabel}>Jumlah</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={String(item.quantity)}
+                    onChangeText={(val) => updateDraftItem(index, 'quantity', val)}
+                    keyboardType="numeric"
+                    placeholder="1"
+                    placeholderTextColor={C.textMuted}
+                  />
+                </View>
+
+                {/* Unit input */}
+                <View style={{ flex: 1, marginLeft: 8 }}>
+                  <Text style={styles.inputLabel}>Satuan</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={item.unit}
+                    onChangeText={(val) => updateDraftItem(index, 'unit', val)}
+                    placeholder="pcs"
+                    placeholderTextColor={C.textMuted}
+                  />
+                </View>
+              </View>
+
+              {/* Expiration Date input */}
+              <Text style={styles.inputLabel}>Tanggal Kedaluwarsa</Text>
+              <TextInput
+                style={styles.textInput}
+                value={item.expiration_date}
+                onChangeText={(val) => updateDraftItem(index, 'expiration_date', val)}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={C.textMuted}
+              />
+
+              {/* Storage Location selector */}
+              <Text style={styles.inputLabel}>Lokasi Penyimpanan</Text>
+              <View style={styles.pillsRow}>
+                {(['freezer', 'chiller', 'room_temp'] as const).map((loc) => (
+                  <TouchableOpacity
+                    key={loc}
+                    style={[
+                      styles.locPill,
+                      item.storage_location === loc && styles.locPillActive,
+                    ]}
+                    onPress={() => updateDraftItem(index, 'storage_location', loc)}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={[
+                        styles.locPillText,
+                        item.storage_location === loc && styles.locPillTextActive,
+                      ]}
+                    >
+                      {loc === 'freezer' ? 'Freezer' : loc === 'chiller' ? 'Chiller' : 'Room Temp'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          ))}
+
+          {/* Submit Button */}
+          <TouchableOpacity
+            style={[styles.uploadBtn, isSaving && styles.uploadBtnLoading]}
+            onPress={handleSaveDrafts}
+            disabled={isSaving}
+            activeOpacity={0.85}
+          >
+            {isSaving ? (
+              <View style={styles.loadingRow}>
+                <ActivityIndicator color={C.white} size="small" />
+                <Text style={styles.uploadBtnText}>Menyimpan ke kulkas...</Text>
+              </View>
+            ) : (
+              <View style={styles.buttonContentRow}>
+                <Feather name="check" size={18} color={C.white} style={{ marginRight: 8 }} />
+                <Text style={styles.uploadBtnText}>Simpan ke Kulkas</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -730,5 +900,83 @@ const styles = StyleSheet.create({
     fontSize:   12,
     lineHeight: 16,
     marginTop:  1,
+  },
+  draftCard: {
+    backgroundColor: C.white,
+    borderRadius: R.cardSm,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 16,
+    marginHorizontal: S.screenPx,
+    marginBottom: 16,
+    ...SHADOW,
+  },
+  draftCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  draftIndex: {
+    color: C.primary,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  deleteBtn: {
+    padding: 6,
+  },
+  inputLabel: {
+    color: C.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 6,
+    marginTop: 10,
+  },
+  textInput: {
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 12,
+    height: 48,
+    paddingHorizontal: 14,
+    color: C.textPrimary,
+    fontSize: 15,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  pillsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 2,
+  },
+  locPill: {
+    flex: 1,
+    height: 38,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locPillActive: {
+    borderColor: C.primary,
+    backgroundColor: C.softGreen,
+  },
+  locPillText: {
+    color: C.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  locPillTextActive: {
+    color: C.primary,
+  },
+  helperTitle: {
+    color:        C.textPrimary,
+    fontSize:     15,
+    fontWeight:   '600',
+    marginBottom: 2,
   },
 });

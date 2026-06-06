@@ -68,7 +68,13 @@ class AuthController extends Controller
 
         // Update FCM token if provided
         if ($request->has('fcm_token')) {
-            $user->update(['fcm_token' => $request->fcm_token]);
+            $user->fcmTokens()->updateOrCreate(
+                ['fcm_token' => $request->fcm_token],
+                [
+                    'device_name'  => $request->input('device_name', $request->header('User-Agent')),
+                    'last_used_at' => now(),
+                ]
+            );
         }
 
         // Expire old tokens and issue a new one
@@ -113,10 +119,22 @@ class AuthController extends Controller
             'persona'           => 'sometimes|in:minimalist,professional,chef',
             'notification_time' => 'sometimes|date_format:H:i',
             'fcm_token'         => 'sometimes|string',
+            'device_name'       => 'sometimes|string',
             'name'              => 'sometimes|string|max:100',
         ]);
 
-        $request->user()->update($validated);
+        $userData = collect($validated)->except(['fcm_token', 'device_name'])->toArray();
+        $request->user()->update($userData);
+
+        if (isset($validated['fcm_token'])) {
+            $request->user()->fcmTokens()->updateOrCreate(
+                ['fcm_token' => $validated['fcm_token']],
+                [
+                    'device_name'  => $validated['device_name'] ?? $request->header('User-Agent'),
+                    'last_used_at' => now(),
+                ]
+            );
+        }
 
         return response()->json([
             'success' => true,

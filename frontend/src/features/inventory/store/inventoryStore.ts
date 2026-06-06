@@ -16,6 +16,15 @@ export interface FoodItem {
   updated_at:       string;
 }
 
+export interface DraftFoodItem {
+  product_name:     string;
+  quantity:         number;
+  unit:             string;
+  storage_location: 'freezer' | 'chiller' | 'room_temp';
+  expiration_date:  string;
+  is_scalable:      boolean;
+}
+
 interface InventoryState {
   items:        FoodItem[];
   isLoading:    boolean;
@@ -26,7 +35,8 @@ interface InventoryState {
   // Actions
   fetchInventory: () => Promise<void>;
   fetchFridgeCheck: () => Promise<FoodItem[]>;
-  scanReceipt:    (imageUri: string) => Promise<void>;
+  scanReceipt:    (imageUri: string) => Promise<DraftFoodItem[]>;
+  addItems:       (items: DraftFoodItem[]) => Promise<void>;
   updateSlider:   (id: number, state: '100' | '50' | '25' | '0') => Promise<void>;
   deleteItem:     (id: number) => Promise<void>;
   clearError:     () => void;
@@ -62,16 +72,29 @@ export const useInventoryStore = create<InventoryState>()((set, get) => ({
     set({ isScanLoading: true, error: null });
     try {
       const { uploadImage } = await import('@core/api/apiClient');
-      await uploadImage('/inventory/scan', imageUri);
+      const response = await uploadImage('/inventory/scan', imageUri);
       set({ isScanLoading: false });
-      // Refresh inventory after a short delay to allow the queue job to process
-      setTimeout(() => get().fetchInventory(), 5000);
+      return response.data.data;
     } catch (err: any) {
+      const message = err.response?.data?.message ?? 'Receipt scan failed. Please try again.';
       set({
-        error: err.response?.data?.message ?? 'Receipt scan failed. Please try again.',
+        error: message,
         isScanLoading: false,
       });
-      throw err;
+      throw new Error(message);
+    }
+  },
+
+  addItems: async (items) => {
+    set({ isLoading: true, error: null });
+    try {
+      await apiClient.post('/inventory', { items });
+      set({ isLoading: false });
+      await get().fetchInventory();
+    } catch (err: any) {
+      const message = err.response?.data?.message ?? 'Failed to add items to your kitchen.';
+      set({ error: message, isLoading: false });
+      throw new Error(message);
     }
   },
 

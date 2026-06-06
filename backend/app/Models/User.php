@@ -63,4 +63,20 @@ class User extends Authenticatable
     {
         return $this->hasMany(HistoryLog::class);
     }
+
+    /**
+     * Relationship: one user has many FCM tokens.
+     */
+    public function fcmTokens()
+    {
+        return $this->hasMany(FcmToken::class);
+    }
+
+    /**
+     * Relationship: one user has many notification logs.
+     */
+    public function notificationLogs()
+    {
+        return $this->hasMany(NotificationLog::class);
+    }
 }

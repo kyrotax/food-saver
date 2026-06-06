@@ -44,25 +44,76 @@ class InventoryController extends Controller
 
     /**
      * POST /api/inventory/scan
-     * Upload a receipt image → dispatch to OCR pipeline via Laravel Queue.
-     * The PrivacyFilterMiddleware runs BEFORE this controller method.
+     * Upload a receipt image → process OCR synchronously → return parsed draft items.
      */
-    public function scan(Request $request)
-    {
+    public function scan(
+        Request $request,
+        \App\Services\CloudVisionService $vision,
+        \App\Services\GeminiService $gemini,
+        \App\Services\ExpirationCalculatorService $expiry,
+        \App\Http\Middleware\PrivacyFilterMiddleware $privacyFilter
+    ) {
         $request->validate([
             'receipt_image' => 'required|image|mimes:jpeg,jpg,png,webp|max:10240',
         ]);
 
         // Store image to local disk temporarily
         $imagePath = $request->file('receipt_image')->store('receipts', 'local');
+        $absolutePath = storage_path("app/{$imagePath}");
 
-        // Dispatch to queue (async) so the API responds immediately
-        ProcessReceiptOCR::dispatch($request->user()->id, $imagePath);
+        // Strip EXIF metadata
+        $this->stripExif($absolutePath);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Receipt uploaded. Your inventory will update in a few seconds.',
-        ], 202);
+        try {
+            // Step 1: Extract text
+            $rawText = $vision->extractText($imagePath);
+
+            // Step 2: Apply privacy filter
+            $sanitizedText = $privacyFilter->scrub($rawText);
+
+            // Step 3: Parse ingredients via Gemini AI
+            $parsedItems = $gemini->parseReceiptItems($sanitizedText);
+
+            $processedItems = [];
+            foreach ($parsedItems as $item) {
+                if (empty($item['product_name'])) {
+                    continue;
+                }
+
+                $storageLocation = $item['storage_location'] ?? 'room_temp';
+                $isScalable      = $item['is_scalable'] ?? false;
+
+                // Calculate expiration date
+                $expirationDate = $expiry->calculate($item['product_name'], $storageLocation);
+
+                $processedItems[] = [
+                    'product_name'     => $item['product_name'],
+                    'quantity'         => $item['quantity'] ?? 1,
+                    'unit'             => $item['unit'] ?? 'pcs',
+                    'storage_location' => $storageLocation,
+                    'expiration_date'  => $expirationDate->toDateString(),
+                    'is_scalable'      => $isScalable,
+                ];
+            }
+
+            // Clean up temporary image
+            \Illuminate\Support\Facades\Storage::disk('local')->delete($imagePath);
+
+            return response()->json([
+                'success' => true,
+                'data'    => $processedItems,
+            ]);
+
+        } catch (\Exception $e) {
+            // Clean up temporary image in case of error
+            \Illuminate\Support\Facades\Storage::disk('local')->delete($imagePath);
+
+            \Illuminate\Support\Facades\Log::error("Synchronous scan failed: " . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to parse receipt: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
@@ -124,5 +175,93 @@ class InventoryController extends Controller
             'success' => true,
             'message' => "{$item->product_name} deleted from inventory.",
         ]);
+    }
+
+    /**
+     * POST /api/inventory
+     * Batch save confirmed inventory items.
+     */
+    public function store(Request $request)
+    {
+        $request->validate([
+            'items'                    => 'required|array|min:1',
+            'items.*.product_name'     => 'required|string|max:150',
+            'items.*.quantity'         => 'required|numeric|min:0',
+            'items.*.unit'             => 'required|string|max:30',
+            'items.*.storage_location' => 'required|in:freezer,chiller,room_temp',
+            'items.*.expiration_date'  => 'required|date_format:Y-m-d',
+            'items.*.is_scalable'      => 'sometimes|boolean',
+        ]);
+
+        $savedItems = [];
+        $userId = $request->user()->id;
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($request, $userId, &$savedItems) {
+            foreach ($request->input('items') as $item) {
+                // Determine urgency status based on expiration date
+                $expirationDate = \Carbon\Carbon::parse($item['expiration_date']);
+                $daysRemaining  = now()->diffInDays($expirationDate, false);
+
+                $urgencyStatus = 'green';
+                if ($daysRemaining <= 1) {
+                    $urgencyStatus = 'red';
+                } elseif ($daysRemaining <= 3) {
+                    $urgencyStatus = 'yellow';
+                }
+
+                $savedItems[] = FoodItem::create([
+                    'user_id'           => $userId,
+                    'product_name'      => $item['product_name'],
+                    'quantity'          => $item['quantity'],
+                    'original_quantity' => $item['quantity'],
+                    'unit'              => $item['unit'],
+                    'storage_location'  => $item['storage_location'],
+                    'expiration_date'   => $item['expiration_date'],
+                    'urgency_status'    => $urgencyStatus,
+                    'is_scalable'       => $item['is_scalable'] ?? false,
+                ]);
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => count($savedItems) . ' item(s) saved to kitchen.',
+            'data'    => $savedItems,
+        ], 201);
+    }
+
+    /**
+     * Recreate image from file to discard all EXIF metadata.
+     */
+    private function stripExif(string $absolutePath): void
+    {
+        if (!function_exists('mime_content_type')) {
+            return;
+        }
+
+        $mime = @mime_content_type($absolutePath);
+        if (!$mime) {
+            return;
+        }
+
+        if ($mime === 'image/jpeg' || $mime === 'image/jpg') {
+            $image = @imagecreatefromjpeg($absolutePath);
+            if ($image) {
+                imagejpeg($image, $absolutePath, 90);
+                imagedestroy($image);
+            }
+        } elseif ($mime === 'image/png') {
+            $image = @imagecreatefrompng($absolutePath);
+            if ($image) {
+                imagepng($image, $absolutePath);
+                imagedestroy($image);
+            }
+        } elseif ($mime === 'image/webp') {
+            $image = @imagecreatefromwebp($absolutePath);
+            if ($image) {
+                imagewebp($image, $absolutePath);
+                imagedestroy($image);
+            }
+        }
     }
 }

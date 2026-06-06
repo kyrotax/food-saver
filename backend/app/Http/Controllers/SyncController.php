@@ -25,6 +25,10 @@ class SyncController extends Controller
 
         foreach ($request->file('images') as $image) {
             $imagePath = $image->store('receipts/sync', 'local');
+            $absolutePath = storage_path("app/{$imagePath}");
+
+            // Strip EXIF metadata
+            $this->stripExif($absolutePath);
 
             // Track in DB for audit
             OfflineQueue::create([
@@ -43,5 +47,40 @@ class SyncController extends Controller
             'message' => "{$dispatched} receipt(s) queued for processing. Inventory will update shortly.",
             'data'    => ['queued_count' => $dispatched],
         ], 202);
+    }
+
+    /**
+     * Recreate image from file to discard all EXIF metadata.
+     */
+    private function stripExif(string $absolutePath): void
+    {
+        if (!function_exists('mime_content_type')) {
+            return;
+        }
+
+        $mime = @mime_content_type($absolutePath);
+        if (!$mime) {
+            return;
+        }
+
+        if ($mime === 'image/jpeg' || $mime === 'image/jpg') {
+            $image = @imagecreatefromjpeg($absolutePath);
+            if ($image) {
+                imagejpeg($image, $absolutePath, 90);
+                imagedestroy($image);
+            }
+        } elseif ($mime === 'image/png') {
+            $image = @imagecreatefrompng($absolutePath);
+            if ($image) {
+                imagepng($image, $absolutePath);
+                imagedestroy($image);
+            }
+        } elseif ($mime === 'image/webp') {
+            $image = @imagecreatefromwebp($absolutePath);
+            if ($image) {
+                imagewebp($image, $absolutePath);
+                imagedestroy($image);
+            }
+        }
     }
 }

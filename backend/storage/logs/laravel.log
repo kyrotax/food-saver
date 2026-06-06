@@ -2029,3 +2029,20 @@ Stack trace:
 #34 C:/Users/Dicky/Documents/PROJEK/juaravibecoding/app_build/backend/artisan(16): Illuminate/Foundation/Application->handleCommand(Object(Symfony/Component/Console/Input/ArgvInput))
 #35 {main}
 "} 
+[2026-06-05 17:01:34] local.ERROR: Gemini API error {"status":503,"body":"{
+  \"error\": {
+    \"code\": 503,
+    \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.\",
+    \"status\": \"UNAVAILABLE\"
+  }
+}
+"} 
+[2026-06-05 17:01:34] local.ERROR: Synchronous scan failed: Gemini API request failed: 503  
+[2026-06-05 17:02:17] local.ERROR: Maximum execution time of 30 seconds exceeded {"userId":1,"exception":"[object] (Symfony\\Component\\ErrorHandler\\Error\\FatalError(code: 0): Maximum execution time of 30 seconds exceeded at C:/Users/Dicky/Documents/PROJEK/juaravibecoding/app_build/backend/vendor/guzzlehttp/guzzle/src/Handler/CurlFactory.php:789)
+[stacktrace]
+#0 {main}
+"} 
+[2026-06-05 17:05:00] local.ERROR: Maximum execution time of 30 seconds exceeded {"userId":1,"exception":"[object] (Symfony\\Component\\ErrorHandler\\Error\\FatalError(code: 0): Maximum execution time of 30 seconds exceeded at C:/Users/Dicky/Documents/PROJEK/juaravibecoding/app_build/backend/vendor/guzzlehttp/guzzle/src/Handler/CurlFactory.php:789)
+[stacktrace]
+#0 {main}
+"} 
