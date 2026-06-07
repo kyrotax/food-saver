@@ -124,12 +124,14 @@ function getStorageLabel(location: string): string {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.surface,
-    borderRadius:    BorderRadius.card,
+    borderRadius:    BorderRadius.card,   // 28px from updated Fridgy tokens
+    borderWidth:     1,
+    borderColor:     Colors.border,
     marginHorizontal: Spacing.xl,
     marginBottom:    Spacing.md,
     flexDirection:   'row',
     overflow:        'hidden',
-    ...Shadows.card,
+    ...Shadows.soft,                     // softer shadow — premium not heavy
   },
   accentBar: {
     width:          4,
@@ -200,14 +202,14 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     flex:           1,
-    height:         36,
-    backgroundColor: Colors.surfaceAlt,
-    borderRadius:   BorderRadius.lg,
+    height:         38,
+    backgroundColor: Colors.surfaceGreen,  // Fridgy soft green surface
+    borderRadius:   BorderRadius.md,
     justifyContent: 'center',
     alignItems:     'center',
   },
   actionBtnText: {
-    color:      Colors.textPrimary,
+    color:      Colors.accent,             // primary green text
     fontSize:   Typography.fontSizeSm,
     fontWeight: Typography.fontWeightSemibold,
   },

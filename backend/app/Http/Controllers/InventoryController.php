@@ -82,9 +82,17 @@ class InventoryController extends Controller
 
                 $storageLocation = $item['storage_location'] ?? 'room_temp';
                 $isScalable      = $item['is_scalable'] ?? false;
+                $predictedShelfLife = $item['shelf_life'] ?? [
+                    'freezer'   => 30,
+                    'chiller'   => 7,
+                    'room_temp' => 3,
+                ];
+
+                // Apply guardrails
+                $cappedShelfLife = $expiry->applyGuardrails($item['product_name'], $predictedShelfLife);
 
                 // Calculate expiration date
-                $expirationDate = $expiry->calculate($item['product_name'], $storageLocation);
+                $expirationDate = $expiry->calculate($item['product_name'], $storageLocation, $cappedShelfLife);
 
                 $processedItems[] = [
                     'product_name'     => $item['product_name'],
@@ -93,6 +101,7 @@ class InventoryController extends Controller
                     'storage_location' => $storageLocation,
                     'expiration_date'  => $expirationDate->toDateString(),
                     'is_scalable'      => $isScalable,
+                    'shelf_life'       => $cappedShelfLife,
                 ];
             }
 
@@ -155,6 +164,49 @@ class InventoryController extends Controller
         return response()->json([
             'success' => true,
             'message' => "Quantity updated to {$newQuantity} {$item->unit}.",
+            'data'    => $item->fresh(),
+        ]);
+    }
+
+    /**
+     * PUT /api/inventory/{id}
+     * Update an existing food item's details.
+     */
+    public function update(Request $request, int $id)
+    {
+        $request->validate([
+            'product_name'     => 'sometimes|required|string|max:150',
+            'quantity'         => 'sometimes|required|numeric|min:0',
+            'unit'             => 'sometimes|required|string|max:30',
+            'storage_location' => 'sometimes|required|in:freezer,chiller,room_temp',
+            'expiration_date'  => 'sometimes|required|date_format:Y-m-d',
+        ]);
+
+        $item = FoodItem::where('user_id', $request->user()->id)
+            ->where('id', $id)
+            ->firstOrFail();
+
+        $data = $request->only(['product_name', 'quantity', 'unit', 'storage_location', 'expiration_date']);
+
+        // Recalculate urgency if expiration_date was updated
+        if (isset($data['expiration_date'])) {
+            $expirationDate = \Carbon\Carbon::parse($data['expiration_date']);
+            $daysRemaining  = now()->diffInDays($expirationDate, false);
+
+            $urgencyStatus = 'green';
+            if ($daysRemaining <= 1) {
+                $urgencyStatus = 'red';
+            } elseif ($daysRemaining <= 3) {
+                $urgencyStatus = 'yellow';
+            }
+            $data['urgency_status'] = $urgencyStatus;
+        }
+
+        $item->update($data);
+
+        return response()->json([
+            'success' => true,
+            'message' => "{$item->product_name} updated successfully.",
             'data'    => $item->fresh(),
         ]);
     }

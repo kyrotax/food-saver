@@ -90,7 +90,30 @@ export const ScanScreen: React.FC = () => {
   const updateDraftItem = (index: number, key: keyof DraftFoodItem, value: any) => {
     if (!draftItems) return;
     const updated = [...draftItems];
-    updated[index] = { ...updated[index], [key]: value };
+    const item = updated[index];
+
+    if (key === 'storage_location' && item.shelf_life) {
+      const newLoc = value as 'freezer' | 'chiller' | 'room_temp';
+      const days = item.shelf_life[newLoc];
+      if (typeof days === 'number') {
+        const d = new Date();
+        d.setDate(d.getDate() + days);
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const date = String(d.getDate()).padStart(2, '0');
+        const expiryStr = `${year}-${month}-${date}`;
+
+        updated[index] = {
+          ...item,
+          storage_location: newLoc,
+          expiration_date: expiryStr
+        };
+        setDraftItems(updated);
+        return;
+      }
+    }
+
+    updated[index] = { ...item, [key]: value };
     setDraftItems(updated);
   };
 
@@ -110,7 +133,7 @@ export const ScanScreen: React.FC = () => {
         quantity: parseFloat(String(item.quantity)) || 1
       }));
       await addItems(validatedItems);
-      Alert.alert('Success', 'Ingredients saved to kitchen successfully!');
+      Alert.alert('Saved', 'Ingredients added to your fridge.');
       navigation.goBack();
     } catch (err: any) {
       Alert.alert('Error', err.message ?? 'Failed to save items.');
@@ -120,39 +143,48 @@ export const ScanScreen: React.FC = () => {
   };
 
   const pickFromCamera = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission required', 'Camera access is needed to scan receipts.');
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality:    0.9,
-      allowsEditing: true,
-    });
-    if (!result.canceled) {
-      setImageUri(result.assets[0].uri);
-      setStatusType(null);
-      setStatusMsg('');
-      setDraftItems(null);
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission required', 'Camera access is needed to scan receipts.');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality:    0.9,
+      });
+      if (!result.canceled) {
+        setImageUri(result.assets[0].uri);
+        setStatusType(null);
+        setStatusMsg('');
+        setDraftItems(null);
+      }
+    } catch (error: any) {
+      console.error('Camera launch error:', error);
+      Alert.alert('Error', `Failed to launch camera: ${error.message ?? error}`);
     }
   };
 
   const pickFromGallery = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission required', 'Photo library access is needed to upload receipts.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality:    0.9,
-    });
-    if (!result.canceled) {
-      setImageUri(result.assets[0].uri);
-      setStatusType(null);
-      setStatusMsg('');
-      setDraftItems(null);
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission required', 'Photo library access is needed to upload receipts.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality:    0.9,
+      });
+      if (!result.canceled) {
+        setImageUri(result.assets[0].uri);
+        setStatusType(null);
+        setStatusMsg('');
+        setDraftItems(null);
+      }
+    } catch (error: any) {
+      console.error('Gallery launch error:', error);
+      Alert.alert('Error', `Failed to launch gallery: ${error.message ?? error}`);
     }
   };
 
@@ -200,7 +232,7 @@ export const ScanScreen: React.FC = () => {
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
             <Text style={styles.headerTitle}>Review Ingredients</Text>
-            <Text style={styles.headerSubtitle}>Confirm detected food items</Text>
+            <Text style={styles.headerSubtitle}>Check details before saving to your fridge</Text>
           </View>
         </View>
 
@@ -209,32 +241,32 @@ export const ScanScreen: React.FC = () => {
           contentContainerStyle={styles.scrollContent}
         >
           <View style={{ marginHorizontal: S.screenPx, marginBottom: 16 }}>
-            <Text style={styles.helperTitle}>Edit detected items:</Text>
+            <Text style={styles.helperTitle}>Edit before saving</Text>
           </View>
 
           {draftItems.map((item, index) => (
             <View key={index} style={styles.draftCard}>
               <View style={styles.draftCardHeader}>
-                <Text style={styles.draftIndex}>Bahan #{index + 1}</Text>
+                <Text style={styles.draftIndex}>Item #{index + 1}</Text>
                 <TouchableOpacity onPress={() => deleteDraftItem(index)} style={styles.deleteBtn}>
                   <Feather name="trash-2" size={18} color={C.urgent} />
                 </TouchableOpacity>
               </View>
 
               {/* Name input */}
-              <Text style={styles.inputLabel}>Nama Bahan</Text>
+              <Text style={styles.inputLabel}>Ingredient Name</Text>
               <TextInput
                 style={styles.textInput}
                 value={item.product_name}
                 onChangeText={(val) => updateDraftItem(index, 'product_name', val)}
-                placeholder="Nama produk"
+                placeholder="Product name"
                 placeholderTextColor={C.textMuted}
               />
 
               <View style={styles.inputRow}>
                 {/* Quantity input */}
                 <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={styles.inputLabel}>Jumlah</Text>
+                  <Text style={styles.inputLabel}>Quantity</Text>
                   <TextInput
                     style={styles.textInput}
                     value={String(item.quantity)}
@@ -247,7 +279,7 @@ export const ScanScreen: React.FC = () => {
 
                 {/* Unit input */}
                 <View style={{ flex: 1, marginLeft: 8 }}>
-                  <Text style={styles.inputLabel}>Satuan</Text>
+                  <Text style={styles.inputLabel}>Unit</Text>
                   <TextInput
                     style={styles.textInput}
                     value={item.unit}
@@ -259,7 +291,7 @@ export const ScanScreen: React.FC = () => {
               </View>
 
               {/* Expiration Date input */}
-              <Text style={styles.inputLabel}>Tanggal Kedaluwarsa</Text>
+              <Text style={styles.inputLabel}>Expiration Date</Text>
               <TextInput
                 style={styles.textInput}
                 value={item.expiration_date}
@@ -269,7 +301,7 @@ export const ScanScreen: React.FC = () => {
               />
 
               {/* Storage Location selector */}
-              <Text style={styles.inputLabel}>Lokasi Penyimpanan</Text>
+              <Text style={styles.inputLabel}>Storage Location</Text>
               <View style={styles.pillsRow}>
                 {(['freezer', 'chiller', 'room_temp'] as const).map((loc) => (
                   <TouchableOpacity
@@ -305,12 +337,12 @@ export const ScanScreen: React.FC = () => {
             {isSaving ? (
               <View style={styles.loadingRow}>
                 <ActivityIndicator color={C.white} size="small" />
-                <Text style={styles.uploadBtnText}>Menyimpan ke kulkas...</Text>
+                <Text style={styles.uploadBtnText}>Saving to fridge...</Text>
               </View>
             ) : (
               <View style={styles.buttonContentRow}>
                 <Feather name="check" size={18} color={C.white} style={{ marginRight: 8 }} />
-                <Text style={styles.uploadBtnText}>Simpan ke Kulkas</Text>
+                <Text style={styles.uploadBtnText}>Save to Fridge</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -343,9 +375,9 @@ export const ScanScreen: React.FC = () => {
             <Feather name="zap" size={18} color={C.primary} />
           </View>
           <View style={styles.helperTextContainer}>
-            <Text style={styles.helperTitle}>Add items faster</Text>
+            <Text style={styles.helperTitle}>Scan once, save time</Text>
             <Text style={styles.helperDesc}>
-              Scan your receipt and Food Saver will detect ingredients automatically.
+              Fridgy will detect ingredients from your receipt automatically.
             </Text>
           </View>
         </View>
@@ -392,7 +424,7 @@ export const ScanScreen: React.FC = () => {
           <View style={styles.progressCard}>
             <ActivityIndicator size="small" color={C.primary} style={{ marginRight: 12 }} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.progressTitle}>Processing Receipt</Text>
+              <Text style={styles.progressTitle}>Scanning receipt</Text>
               <Text style={styles.progressDesc}>Detecting ingredients from your receipt...</Text>
             </View>
           </View>

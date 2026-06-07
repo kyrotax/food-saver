@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { apiClient } from '@core/api/apiClient';
+import { apiClient, uploadImage } from '@core/api/apiClient';
 
 export interface FoodItem {
   id:               number;
@@ -23,6 +23,11 @@ export interface DraftFoodItem {
   storage_location: 'freezer' | 'chiller' | 'room_temp';
   expiration_date:  string;
   is_scalable:      boolean;
+  shelf_life?: {
+    freezer: number;
+    chiller: number;
+    room_temp: number;
+  };
 }
 
 interface InventoryState {
@@ -37,7 +42,9 @@ interface InventoryState {
   fetchFridgeCheck: () => Promise<FoodItem[]>;
   scanReceipt:    (imageUri: string) => Promise<DraftFoodItem[]>;
   addItems:       (items: DraftFoodItem[]) => Promise<void>;
+  addManualItem:  (item: DraftFoodItem) => Promise<void>;
   updateSlider:   (id: number, state: '100' | '50' | '25' | '0') => Promise<void>;
+  updateItem:     (id: number, data: Partial<FoodItem>) => Promise<void>;
   deleteItem:     (id: number) => Promise<void>;
   clearError:     () => void;
 }
@@ -71,7 +78,6 @@ export const useInventoryStore = create<InventoryState>()((set, get) => ({
   scanReceipt: async (imageUri) => {
     set({ isScanLoading: true, error: null });
     try {
-      const { uploadImage } = await import('@core/api/apiClient');
       const response = await uploadImage('/inventory/scan', imageUri);
       set({ isScanLoading: false });
       return response.data.data;
@@ -98,6 +104,10 @@ export const useInventoryStore = create<InventoryState>()((set, get) => ({
     }
   },
 
+  addManualItem: async (item) => {
+    await get().addItems([item]);
+  },
+
   updateSlider: async (id, state) => {
     try {
       const response = await apiClient.put(`/inventory/${id}/slider`, { state });
@@ -114,6 +124,20 @@ export const useInventoryStore = create<InventoryState>()((set, get) => ({
       }
     } catch (err: any) {
       set({ error: err.response?.data?.message ?? 'Failed to update quantity.' });
+      throw err;
+    }
+  },
+
+  updateItem: async (id, data) => {
+    try {
+      const response = await apiClient.put(`/inventory/${id}`, data);
+      set((s) => ({
+        items: s.items.map((item) =>
+          item.id === id ? { ...item, ...response.data.data } : item
+        ),
+      }));
+    } catch (err: any) {
+      set({ error: err.response?.data?.message ?? 'Failed to update item.' });
       throw err;
     }
   },

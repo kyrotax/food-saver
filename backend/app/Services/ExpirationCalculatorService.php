@@ -7,8 +7,42 @@ use Carbon\Carbon;
 class ExpirationCalculatorService
 {
     /**
+     * Category guardrails defining maximum safe shelf life in days.
+     */
+    private const CATEGORY_GUARDRAILS = [
+        'dry_goods' => [
+            'keywords' => ['beras', 'minyak', 'tepung', 'gula', 'garam', 'mie', 'indomie', 'pasta', 'kecap', 'saos', 'saus', 'kopi', 'teh', 'bumbu', 'bubuk', 'kental manis', 'uht'],
+            'max_shelf_life' => ['freezer' => 730, 'chiller' => 730, 'room_temp' => 730]
+        ],
+        'meat_poultry_fish' => [
+            'keywords' => ['ayam', 'daging', 'ikan', 'sapi', 'kambing', 'seafood', 'udang', 'cumi', 'bakso', 'sosis'],
+            'max_shelf_life' => ['freezer' => 180, 'chiller' => 5, 'room_temp' => 1]
+        ],
+        'tofu_tempeh' => [
+            'keywords' => ['tahu', 'tempe'],
+            'max_shelf_life' => ['freezer' => 14, 'chiller' => 5, 'room_temp' => 1]
+        ],
+        'fresh_dairy' => [
+            'keywords' => ['susu', 'yogurt'],
+            'max_shelf_life' => ['freezer' => 90, 'chiller' => 14, 'room_temp' => 1]
+        ],
+        'hard_dairy' => [
+            'keywords' => ['keju', 'butter', 'mentega', 'cream'],
+            'max_shelf_life' => ['freezer' => 180, 'chiller' => 30, 'room_temp' => 14]
+        ],
+        'tubers_alliums' => [
+            'keywords' => ['kentang', 'bawang', 'singkong', 'ubi'],
+            'max_shelf_life' => ['freezer' => 90, 'chiller' => 90, 'room_temp' => 60]
+        ],
+        'vegetables_fruits' => [
+            'keywords' => ['bayam', 'kangkung', 'wortel', 'tomat', 'kubis', 'sawi', 'pisang', 'apel', 'jeruk', 'mangga', 'semangka', 'sayur', 'buah', 'cabe', 'cabai'],
+            'max_shelf_life' => ['freezer' => 30, 'chiller' => 14, 'room_temp' => 7]
+        ]
+    ];
+
+    /**
      * Base shelf life (in days at room temperature) for common food categories.
-     * Used as the baseline for expiry calculation with storage multipliers.
+     * Used as fallback if AI prediction is unavailable.
      */
     private const BASE_SHELF_LIFE = [
         // Proteins
@@ -33,8 +67,7 @@ class ExpirationCalculatorService
     ];
 
     /**
-     * Storage multipliers applied to the base shelf life.
-     * Freezer: 4x | Chiller: 1x | Room temp: 0.5x
+     * Storage multipliers applied to the base shelf life (fallback only).
      */
     private const STORAGE_MULTIPLIERS = [
         'freezer'   => 4.0,
@@ -43,24 +76,65 @@ class ExpirationCalculatorService
     ];
 
     /**
-     * Calculate the expiration date based on product name and storage location.
-     *
-     * @param  string  $productName
-     * @param  string  $storageLocation  'freezer' | 'chiller' | 'room_temp'
-     * @return Carbon
+     * Apply category-based safety guardrails to the predicted shelf life.
      */
-    public function calculate(string $productName, string $storageLocation): Carbon
+    public function applyGuardrails(string $productName, array $predictedShelfLife): array
     {
-        $baseLife   = $this->getBaseShelfLife($productName);
-        $multiplier = self::STORAGE_MULTIPLIERS[$storageLocation] ?? 1.0;
+        $lower = strtolower($productName);
+        $maxShelfLife = ['freezer' => 365, 'chiller' => 90, 'room_temp' => 30]; // default caps
 
-        $daysToAdd = (int) round($baseLife * $multiplier);
+        // Define order of checking to ensure dry/processed versions are matched first
+        $order = [
+            'dry_goods',
+            'meat_poultry_fish',
+            'tofu_tempeh',
+            'fresh_dairy',
+            'hard_dairy',
+            'tubers_alliums',
+            'vegetables_fruits'
+        ];
+
+        foreach ($order as $catKey) {
+            $catData = self::CATEGORY_GUARDRAILS[$catKey];
+            foreach ($catData['keywords'] as $keyword) {
+                // Use regex word boundaries to prevent matches like 'bayam' matching 'ayam'
+                $pattern = '/\b' . preg_quote($keyword, '/') . '\b/i';
+                if (preg_match($pattern, $lower)) {
+                    $maxShelfLife = $catData['max_shelf_life'];
+                    break 2;
+                }
+            }
+        }
+
+        $capped = [];
+        foreach (['freezer', 'chiller', 'room_temp'] as $loc) {
+            $predicted = (int) ($predictedShelfLife[$loc] ?? 1);
+            $maxLimit = $maxShelfLife[$loc];
+            $capped[$loc] = max(min($predicted, $maxLimit), 1);
+        }
+
+        return $capped;
+    }
+
+    /**
+     * Calculate the expiration date based on product name and storage location.
+     * Optionally takes the capped predicted shelf life.
+     */
+    public function calculate(string $productName, string $storageLocation, ?array $predictedShelfLife = null): Carbon
+    {
+        if ($predictedShelfLife) {
+            $daysToAdd = $predictedShelfLife[$storageLocation] ?? 1;
+        } else {
+            $baseLife   = $this->getBaseShelfLife($productName);
+            $multiplier = self::STORAGE_MULTIPLIERS[$storageLocation] ?? 1.0;
+            $daysToAdd = (int) round($baseLife * $multiplier);
+        }
 
         return Carbon::now()->addDays(max($daysToAdd, 1));
     }
 
     /**
-     * Lookup base shelf life by matching product name keywords.
+     * Lookup base shelf life by matching product name keywords (fallback only).
      */
     private function getBaseShelfLife(string $productName): int
     {

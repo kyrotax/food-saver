@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import * as SQLite from 'expo-sqlite';
 import { uploadImage } from '@core/api/apiClient';
+import { getToken } from '@core/auth/tokenStorage';
 
 /**
  * Offline Queue Store
@@ -92,7 +93,13 @@ export const useOfflineQueueStore = create<OfflineQueueState>()((set, get) => ({
   syncPendingUploads: async () => {
     if (get().isSyncing) return;
 
-    const pending = get().queue.filter((q) => q.status === 'pending');
+    const token = getToken();
+    if (!token) {
+      console.log('[OfflineQueue] Sync deferred: token not loaded');
+      return;
+    }
+
+    const pending = get().queue.filter((q) => q.status === 'pending' || q.status === 'failed');
     if (pending.length === 0) return;
 
     set({ isSyncing: true });

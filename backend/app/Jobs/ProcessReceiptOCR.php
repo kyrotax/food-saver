@@ -62,9 +62,17 @@ class ProcessReceiptOCR implements ShouldQueue
 
                 $storageLocation = $item['storage_location'] ?? 'room_temp';
                 $isScalable      = $item['is_scalable'] ?? false;
+                $predictedShelfLife = $item['shelf_life'] ?? [
+                    'freezer'   => 30,
+                    'chiller'   => 7,
+                    'room_temp' => 3,
+                ];
+
+                // Apply guardrails
+                $cappedShelfLife = $expiry->applyGuardrails($item['product_name'], $predictedShelfLife);
 
                 // Calculate expiration date
-                $expirationDate = $expiry->calculate($item['product_name'], $storageLocation);
+                $expirationDate = $expiry->calculate($item['product_name'], $storageLocation, $cappedShelfLife);
 
                 // Determine initial urgency status
                 $daysRemaining = now()->diffInDays($expirationDate, false);
@@ -82,7 +90,7 @@ class ProcessReceiptOCR implements ShouldQueue
                     'original_quantity' => $item['quantity'] ?? 1,
                     'unit'              => $item['unit'] ?? 'pcs',
                     'storage_location'  => $storageLocation,
-                    'expiration_date'   => $expirationDate,
+                    'expiration_date'   => $expirationDate->toDateString(),
                     'urgency_status'    => $urgencyStatus,
                     'is_scalable'       => $isScalable,
                 ]);

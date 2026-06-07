@@ -1,22 +1,22 @@
 <?php
-
+ 
 namespace App\Services;
-
+ 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-
+ 
 class GeminiService
 {
     private string $apiKey;
     private string $endpoint;
-
+ 
     public function __construct()
     {
         $this->apiKey   = config('services.google.gemini_api_key');
-        $this->endpoint = config('services.google.gemini_endpoint',
-            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent');
+        // Force gemini-flash-latest to bypass config cache and use high quota free-tier model
+        $this->endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent';
     }
-
+ 
     /**
      * Parse raw OCR text from a grocery receipt into structured food items.
      * Returns an array of ['product_name', 'quantity', 'unit'] objects.
@@ -29,7 +29,7 @@ class GeminiService
     {
         $prompt = <<<PROMPT
 You are a grocery receipt parser for an Indonesian food management app.
-
+ 
 Given the following raw OCR text from a grocery receipt, extract all food and beverage items.
 Return ONLY a valid JSON array with no markdown, no explanation, no extra text.
 Each element must have exactly these fields:
@@ -38,21 +38,34 @@ Each element must have exactly these fields:
 - "unit": string (e.g. "pcs", "kg", "g", "liter", "ml", "bungkus", "botol")
 - "storage_location": string (determine optimal storage, must be one of: "freezer", "chiller", or "room_temp")
 - "is_scalable": boolean (true if this is a packaged pantry good measured by percentage like oil, sugar, salt, flour, sauce, syrup; false for fresh products, meats, fruits, vegetables, or individual count items)
-
+- "shelf_life": object representing estimated shelf life of the item in days under each storage condition, containing:
+    - "freezer": integer (days it can last in freezer)
+    - "chiller": integer (days it can last in chiller)
+    - "room_temp": integer (days it can last at room temperature)
+ 
+Guidelines for shelf_life prediction:
+- Be highly contextual to the specific item type:
+  - Fresh/Pasteurized Milk (Susu Segar/Pasteurisasi): chiller = 5-7 days, room_temp = 1 day, freezer = 30 days.
+  - UHT Milk (Susu UHT): chiller = 180 days, room_temp = 180 days, freezer = 30 days.
+  - Fresh Meat/Fish (Daging/Ayam/Ikan): freezer = 90-120 days, chiller = 2-3 days, room_temp = 1 day.
+  - Dry Goods (Beras, Tepung, Gula, Mie Instan): room_temp = 365 days, chiller = 365 days, freezer = 365 days.
+  - Fresh Leafy Vegetables (Bayam, Kangkung): chiller = 3-4 days, room_temp = 1-2 days, freezer = 7 days.
+  - Hard Vegetables/Root crops (Kentang, Bawang): room_temp = 30-45 days, chiller = 30-45 days, freezer = 30 days.
+ 
 Ignore: prices, totals, tax amounts, store names, cashier codes, payment info.
-
+ 
 Raw OCR text:
 ---
 {$rawText}
 ---
-
+ 
 JSON array:
 PROMPT;
-
-        $response = $this->callGemini($prompt);
+ 
+        $response = $this->callGemini($prompt, 'application/json');
         return $this->parseJsonFromResponse($response, 'array');
     }
-
+ 
     /**
      * Classify a food item to determine its optimal storage location
      * and smart default expiration baseline.
@@ -64,22 +77,22 @@ PROMPT;
     {
         $prompt = <<<PROMPT
 You are a food storage expert for Indonesian households.
-
+ 
 Given this food item: "{$productName}"
-
+ 
 Return ONLY a JSON object with these fields:
 - "storage_location": one of "freezer", "chiller", or "room_temp"
 - "base_shelf_life_days": integer (shelf life at room temperature in days)
 - "is_scalable": boolean (true if this is a packaged good measured by percentage, e.g. oil, flour, sugar)
 - "education_note": string (1-sentence tip in Bahasa Indonesia about why this storage location is optimal)
-
+ 
 JSON object:
 PROMPT;
-
-        $response = $this->callGemini($prompt);
+ 
+        $response = $this->callGemini($prompt, 'application/json');
         return $this->parseJsonFromResponse($response, 'object');
     }
-
+ 
     /**
      * Generate an adaptive Indonesian recipe from a list of urgent ingredients.
      *
@@ -90,10 +103,10 @@ PROMPT;
     {
         $prompt = <<<PROMPT
 Kamu adalah chef Indonesia yang kreatif dan hemat.
-
+ 
 Buat 1 resep masakan Indonesia yang praktis menggunakan bahan-bahan berikut yang tersisa:
 {$ingredientList}
-
+ 
 Persyaratan:
 - Resep harus realistis dan mudah dimasak di dapur rumahan
 - Sesuaikan takaran bahan dengan jumlah yang tersedia persis (ubah ke sendok makan/teh jika diperlukan)
@@ -103,27 +116,33 @@ Persyaratan:
   3. **Langkah Memasak** (numbered steps)
   4. **Tips Hemat** (1 tips singkat)
 PROMPT;
-
+ 
         return $this->callGemini($prompt);
     }
-
+ 
     /**
      * Make a request to the Gemini API.
      */
-    private function callGemini(string $prompt): string
+    private function callGemini(string $prompt, ?string $responseMimeType = null): string
     {
+        $generationConfig = [
+            'temperature'     => 0.3,
+            'maxOutputTokens' => 8192,
+        ];
+ 
+        if ($responseMimeType) {
+            $generationConfig['responseMimeType'] = $responseMimeType;
+        }
+ 
         $response = Http::withQueryParameters(['key' => $this->apiKey])
             ->timeout(30)
             ->post($this->endpoint, [
                 'contents' => [
                     ['parts' => [['text' => $prompt]]],
                 ],
-                'generationConfig' => [
-                    'temperature'     => 0.3,
-                    'maxOutputTokens' => 2048,
-                ],
+                'generationConfig' => $generationConfig,
             ]);
-
+ 
         if ($response->failed()) {
             Log::error('Gemini API error', [
                 'status' => $response->status(),
@@ -131,10 +150,10 @@ PROMPT;
             ]);
             throw new \Exception('Gemini API request failed: ' . $response->status());
         }
-
+ 
         return $response->json('candidates.0.content.parts.0.text', '');
     }
-
+ 
     /**
      * Parse JSON from Gemini's text response.
      */
@@ -142,18 +161,22 @@ PROMPT;
     {
         // Strip markdown code blocks if present
         $text = preg_replace('/```(?:json)?\s*([\s\S]*?)\s*```/', '$1', trim($text));
-
+ 
         $decoded = json_decode(trim($text), true);
-
+ 
         if (json_last_error() !== JSON_ERROR_NONE) {
-            Log::warning('Gemini returned invalid JSON', ['raw' => $text]);
-            throw new \Exception('Gemini returned malformed JSON: ' . json_last_error_msg());
+            $errMsg = json_last_error_msg();
+            Log::warning('Gemini returned invalid JSON', [
+                'raw'   => $text,
+                'error' => $errMsg
+            ]);
+            throw new \Exception('Gemini returned malformed JSON: ' . $errMsg);
         }
-
+ 
         if ($type === 'array' && ! is_array($decoded)) {
             throw new \Exception('Expected JSON array from Gemini.');
         }
-
+ 
         return $decoded;
     }
 }

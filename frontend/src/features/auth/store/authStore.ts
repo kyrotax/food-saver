@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { apiClient } from '@core/api/apiClient';
+import { setToken } from '@core/auth/tokenStorage';
 
 export interface User {
   id:                number;
@@ -48,8 +49,10 @@ export const useAuthStore = create<AuthState>()(
       bootstrap: async () => {
         try {
           const token = await SecureStore.getItemAsync('auth_token');
+          setToken(token);          // sync in-memory token for apiClient
           set({ token, isReady: true });
         } catch (err) {
+          setToken(null);
           set({ token: null, isReady: true });
         }
       },
@@ -60,6 +63,7 @@ export const useAuthStore = create<AuthState>()(
           const response = await apiClient.post('/auth/register', data);
           const { user, token } = response.data.data;
           await SecureStore.setItemAsync('auth_token', token);
+          setToken(token);          // sync in-memory token for apiClient
           set({ user, token, isLoading: false });
         } catch (err: any) {
           const message = err.response?.data?.message ?? 'Registration failed.';
@@ -78,6 +82,7 @@ export const useAuthStore = create<AuthState>()(
           });
           const { user, token } = response.data.data;
           await SecureStore.setItemAsync('auth_token', token);
+          setToken(token);          // sync in-memory token for apiClient
           set({ user, token, isLoading: false });
         } catch (err: any) {
           const message = err.response?.data?.message ?? 'Login failed.';
@@ -92,6 +97,7 @@ export const useAuthStore = create<AuthState>()(
           apiClient.post('/auth/logout').catch(() => {});
         }
         await SecureStore.deleteItemAsync('auth_token');
+        setToken(null);           // clear in-memory token
         set({ user: null, token: null, error: null });
       },
 

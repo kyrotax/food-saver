@@ -8,6 +8,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useInventoryStore, FoodItem } from '@features/inventory/store/inventoryStore';
 import { useAuthStore } from '@features/auth/store/authStore';
 import { ConsumptionSlider } from '@features/inventory/components/ConsumptionSlider';
+import { AddEditItemModal } from '@features/inventory/components/AddEditItemModal';
 
 // ─── Design Tokens ──────────────────────────────────────────────────────────
 // Centralized palette — white-first, food-tech premium
@@ -133,6 +134,7 @@ export const DashboardScreen: React.FC = () => {
   } = useInventoryStore();
 
   const [sliderVisible, setSliderVisible] = useState(false);
+  const [addModalVisible, setAddModalVisible] = useState(false);
   const [selectedItem,  setSelectedItem]  = useState<{ id: number; name: string } | null>(null);
   const [refreshing,    setRefreshing]    = useState(false);
 
@@ -251,7 +253,7 @@ export const DashboardScreen: React.FC = () => {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.btnSecondary}
-                onPress={() => navigation.navigate('FridgeCheck')}
+                onPress={() => setAddModalVisible(true)}
                 activeOpacity={0.8}
               >
                 <Feather name="plus-circle" size={20} color={C.primary} style={{ marginRight: 10 }} />
@@ -327,7 +329,7 @@ export const DashboardScreen: React.FC = () => {
 
             <TouchableOpacity
               style={styles.qaCard}
-              onPress={() => navigation.navigate('FridgeCheck')}
+              onPress={() => setAddModalVisible(true)}
               activeOpacity={0.7}
             >
               <View style={[styles.qaIcon, { backgroundColor: '#EEF1FF' }]}>
@@ -506,12 +508,12 @@ export const DashboardScreen: React.FC = () => {
                 </View>
                 <View style={styles.recipeContent}>
                   <Text style={styles.recipeTitle}>
-                    {isEmpty ? 'Get started with recipes' : 'Your kitchen is under control'}
+                    {isEmpty ? 'Start exploring recipes' : 'Your fridge is in good shape'}
                   </Text>
                   <Text style={styles.recipeDesc}>
                     {isEmpty
                       ? 'Add ingredients to get personalised recipe ideas.'
-                      : 'Add more ingredients or check your fridge to get recipe ideas.'}
+                      : 'Browse recipes you can make with what you have.'}
                   </Text>
                 </View>
               </View>
@@ -541,6 +543,13 @@ export const DashboardScreen: React.FC = () => {
           }}
         />
       )}
+
+      {/* ─── Add Item Modal ─── */}
+      <AddEditItemModal 
+        visible={addModalVisible} 
+        onClose={() => setAddModalVisible(false)} 
+        mode="add" 
+      />
     </View>
   );
 };

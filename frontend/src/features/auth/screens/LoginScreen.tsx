@@ -2,24 +2,44 @@ import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ScrollView, KeyboardAvoidingView,
-  Platform, ActivityIndicator, Alert,
+  Platform, ActivityIndicator, Alert, Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useAuthStore } from '@features/auth/store/authStore';
-import { Colors, Typography, Spacing, BorderRadius } from '@app/theme/theme';
+import { useAuthStore }  from '@features/auth/store/authStore';
 
+// ─── Fridgy Design Tokens (inline — decoupled from legacy cream theme) ───────
+const C = {
+  bg:            '#FFFFFF',
+  bgSoft:        '#F8FAF8',
+  surfaceGreen:  '#EAF5EE',
+  primary:       '#3A9B68',
+  primaryDark:   '#2F8F5B',
+  textPrimary:   '#1F2A24',
+  textSecondary: '#6F7D73',
+  textMuted:     '#8A968E',
+  border:        '#E7EDE7',
+  error:         '#E75D5D',
+  disabled:      '#E8F1EA',
+  disabledText:  '#8AA091',
+  white:         '#FFFFFF',
+};
+
+// ─── Fridgy logo asset ───────────────────────────────────────────────────────
+const LOGO = require('../../../../assets/logo.png');
+
+// ─── Main Screen ─────────────────────────────────────────────────────────────
 export const LoginScreen: React.FC = () => {
-  const navigation  = useNavigation<any>();
-  const login       = useAuthStore((s) => s.login);
-  const isLoading   = useAuthStore((s) => s.isLoading);
+  // ── Auth state (DO NOT TOUCH — logic unchanged) ──────────────────────────
+  const navigation = useNavigation<any>();
+  const login      = useAuthStore((s) => s.login);
+  const isLoading  = useAuthStore((s) => s.isLoading);
 
-  const [email,    setEmail]    = useState('');
-  const [password, setPassword] = useState('');
-  
-  // Input focus states for active border rendering (Lime accent)
-  const [emailFocused, setEmailFocused] = useState(false);
+  const [email,           setEmail]           = useState('');
+  const [password,        setPassword]        = useState('');
+  const [emailFocused,    setEmailFocused]    = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
 
+  // ── Login handler (DO NOT TOUCH — logic unchanged) ───────────────────────
   const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert('Validation', 'Please enter email and password.');
@@ -33,168 +53,226 @@ export const LoginScreen: React.FC = () => {
     }
   };
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={styles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
 
-        {/* Logo / Hero */}
-        <View style={styles.hero}>
-          <Text style={styles.logo}>🥘</Text>
-          <Text style={styles.appName}>Food Saver</Text>
-          <Text style={styles.tagline}>Smart Kitchen. Zero Waste.</Text>
+        {/* ── Brand Area ─────────────────────────────────────────────── */}
+        <View style={styles.brandArea}>
+          <Image
+            source={LOGO}
+            style={styles.logoImage}
+            resizeMode="contain"
+            accessibilityLabel="Fridgy logo"
+          />
         </View>
 
-        {/* Form Card */}
+        {/* ── Form Card ──────────────────────────────────────────────── */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Sign In</Text>
 
+          {/* Card Header */}
+          <Text style={styles.cardTitle}>Welcome back</Text>
+          <Text style={styles.cardSubtitle}>
+            Manage your kitchen smarter with Fridgy.
+          </Text>
+
+          {/* Email Input */}
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>EMAIL</Text>
+            <Text style={styles.inputLabel}>Email</Text>
             <TextInput
-              style={[styles.input, emailFocused && styles.inputFocused]}
+              style={[
+                styles.input,
+                emailFocused && styles.inputFocused,
+              ]}
               value={email}
               onChangeText={setEmail}
               placeholder="you@example.com"
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={C.textMuted}
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
               onFocus={() => setEmailFocused(true)}
-              onBlur={() => setEmailFocused(false)}
+              onBlur={()  => setEmailFocused(false)}
+              editable={!isLoading}
             />
           </View>
 
+          {/* Password Input */}
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>PASSWORD</Text>
+            <Text style={styles.inputLabel}>Password</Text>
             <TextInput
-              style={[styles.input, passwordFocused && styles.inputFocused]}
+              style={[
+                styles.input,
+                passwordFocused && styles.inputFocused,
+              ]}
               value={password}
               onChangeText={setPassword}
               placeholder="Min. 8 characters"
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={C.textMuted}
               secureTextEntry
               onFocus={() => setPasswordFocused(true)}
-              onBlur={() => setPasswordFocused(false)}
+              onBlur={()  => setPasswordFocused(false)}
+              editable={!isLoading}
             />
           </View>
 
+          {/* Primary Button — Sign In */}
           <TouchableOpacity
-            style={[styles.primaryBtn, isLoading && styles.primaryBtnDisabled]}
+            style={[
+              styles.primaryBtn,
+              isLoading && styles.primaryBtnDisabled,
+            ]}
             onPress={handleLogin}
             disabled={isLoading}
-            activeOpacity={0.8}
+            activeOpacity={0.82}
           >
-            {isLoading
-              ? <ActivityIndicator color={Colors.textInverse} />
-              : <Text style={styles.primaryBtnText}>Sign In →</Text>
-            }
+            {isLoading ? (
+              <ActivityIndicator color={C.white} />
+            ) : (
+              <Text style={styles.primaryBtnText}>Sign In</Text>
+            )}
           </TouchableOpacity>
 
+          {/* Secondary — Navigate to Register (DO NOT change route name) */}
           <TouchableOpacity
-            style={styles.secondaryBtn}
+            style={styles.secondaryRow}
             onPress={() => navigation.navigate('Register')}
-            activeOpacity={0.8}
+            activeOpacity={0.7}
           >
-            <Text style={styles.secondaryBtnText}>
-              No account? <Text style={styles.secondaryBtnLink}>Register here</Text>
+            <Text style={styles.secondaryText}>
+              Don't have an account?{' '}
+              <Text style={styles.secondaryLink}>Create one</Text>
             </Text>
           </TouchableOpacity>
+
         </View>
+
+        {/* Bottom breathe space */}
+        <View style={{ height: 32 }} />
 
       </ScrollView>
     </KeyboardAvoidingView>
   );
 };
 
+// ─── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+  screen: {
+    flex:            1,
+    backgroundColor: C.bg,
+  },
   scroll: {
-    flexGrow:        1,
-    justifyContent:  'center',
-    padding:         Spacing.xl,
+    flexGrow:          1,
+    justifyContent:    'center',
+    paddingHorizontal: 24,
+    paddingTop:        Platform.OS === 'ios' ? 56 : 40,
+    paddingBottom:     24,
   },
-  hero: {
-    alignItems:    'center',
-    marginBottom:  Spacing.xxxl,
+
+  // ── Brand Area ────────────────────────────────────────────────────────────
+  brandArea: {
+    alignItems:   'center',
+    marginBottom: 32,
   },
-  logo: {
-    fontSize:     72,
-    marginBottom: Spacing.md,
+  logoImage: {
+    width:  200,
+    height: 80,
   },
-  appName: {
-    color:        Colors.textPrimary,
-    fontSize:     Typography.fontSizeTitle, // 28sp
-    fontWeight:   Typography.fontWeightBold,
-    letterSpacing: Typography.letterSpacingTight,
-  },
-  tagline: {
-    color:     Colors.textSecondary,
-    fontSize:  Typography.fontSizeMd,
-    marginTop: Spacing.xs,
-  },
+
+  // ── Form Card ─────────────────────────────────────────────────────────────
   card: {
-    backgroundColor: Colors.surface,
+    backgroundColor: C.white,
     borderWidth:     1,
-    borderColor:     Colors.border,
-    borderRadius:    BorderRadius.card, // 20px
-    padding:         Spacing.xl,
+    borderColor:     C.border,
+    borderRadius:    28,
+    padding:         24,
+    // Soft premium shadow
+    shadowColor:     '#1F2A24',
+    shadowOffset:    { width: 0, height: 2 },
+    shadowOpacity:   0.06,
+    shadowRadius:    16,
+    elevation:       3,
   },
   cardTitle: {
-    color:        Colors.textPrimary,
-    fontSize:     Typography.fontSizeXl,
-    fontWeight:   Typography.fontWeightBold,
-    marginBottom: Spacing.xl,
-    letterSpacing: Typography.letterSpacingTight,
+    color:         C.textPrimary,
+    fontSize:      24,
+    fontWeight:    '700',
+    letterSpacing: -0.3,
+    marginBottom:  6,
   },
+  cardSubtitle: {
+    color:        C.textSecondary,
+    fontSize:     14,
+    fontWeight:   '400',
+    lineHeight:   20,
+    marginBottom: 24,
+  },
+
+  // ── Input ─────────────────────────────────────────────────────────────────
   inputGroup: {
-    marginBottom: Spacing.md,
+    marginBottom: 14,
   },
   inputLabel: {
-    color:        Colors.textSecondary,
-    fontSize:     Typography.fontSizeXs,
-    fontWeight:   Typography.fontWeightMedium,
-    letterSpacing: 1.0,
-    marginBottom:  Spacing.xs,
+    color:        C.textSecondary,
+    fontSize:     13,
+    fontWeight:   '500',
+    marginBottom: 6,
   },
   input: {
-    backgroundColor: Colors.surfaceAlt,
+    backgroundColor: C.bgSoft,
     borderWidth:     1,
-    borderColor:     Colors.border,
-    borderRadius:    BorderRadius.input, // 14px
-    color:           Colors.textPrimary,
-    fontSize:        Typography.fontSizeMd,
-    padding:         Spacing.md,
+    borderColor:     C.border,
+    borderRadius:    18,
+    color:           C.textPrimary,
+    fontSize:        15,
+    fontWeight:      '400',
+    height:          56,
+    paddingHorizontal: 18,
   },
   inputFocused: {
-    borderColor: Colors.accent, // lime focus border
+    borderColor:     C.primary,
+    backgroundColor: C.white,
   },
+
+  // ── Primary Button ────────────────────────────────────────────────────────
   primaryBtn: {
-    backgroundColor: Colors.accent,
-    borderRadius:    BorderRadius.button, // 14px
-    height:          52,
+    backgroundColor: C.primary,
+    borderRadius:    18,
+    height:          56,
     alignItems:      'center',
     justifyContent:  'center',
-    marginTop:       Spacing.lg,
+    marginTop:       8,
   },
-  primaryBtnDisabled: { opacity: 0.6 },
+  primaryBtnDisabled: {
+    backgroundColor: C.disabled,
+  },
   primaryBtnText: {
-    color:      Colors.textInverse,
-    fontSize:   Typography.fontSizeButton, // 15sp
-    fontWeight: Typography.fontWeightSemibold,
+    color:      C.white,
+    fontSize:   16,
+    fontWeight: '600',
+    letterSpacing: 0.1,
   },
-  secondaryBtn: {
-    marginTop:   Spacing.lg,
-    alignItems:  'center',
+
+  // ── Secondary Link ────────────────────────────────────────────────────────
+  secondaryRow: {
+    marginTop:  20,
+    alignItems: 'center',
   },
-  secondaryBtnText: {
-    color:    Colors.textSecondary,
-    fontSize: Typography.fontSizeMd,
+  secondaryText: {
+    color:    C.textSecondary,
+    fontSize: 14,
+    fontWeight: '400',
   },
-  secondaryBtnLink: {
-    color:      Colors.accent,
-    fontWeight: Typography.fontWeightSemibold,
+  secondaryLink: {
+    color:      C.primary,
+    fontWeight: '600',
   },
 });

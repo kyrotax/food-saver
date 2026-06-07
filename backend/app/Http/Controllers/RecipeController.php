@@ -18,16 +18,22 @@ class RecipeController extends Controller
     {
         $userId      = $request->user()->id;
         $urgentItems = FoodItem::where('user_id', $userId)->urgent()->get();
+        $ingredientsToUse = $urgentItems;
 
         if ($urgentItems->isEmpty()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No urgent items found. Your kitchen is looking good!',
-            ], 404);
+            $allItems = FoodItem::where('user_id', $userId)->get();
+            if ($allItems->isEmpty()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Your kitchen is empty. Add ingredients to generate recipes!',
+                ], 404);
+            }
+            // Pick up to 8 random ingredients to avoid overwhelming the prompt
+            $ingredientsToUse = $allItems->random(min(8, $allItems->count()));
         }
 
         // Build ingredient snapshot for Gemini prompt
-        $ingredientList = $urgentItems->map(function ($item) {
+        $ingredientList = $ingredientsToUse->map(function ($item) {
             return "{$item->product_name}: {$item->quantity} {$item->unit}";
         })->implode(', ');
 
@@ -36,7 +42,7 @@ class RecipeController extends Controller
         return response()->json([
             'success' => true,
             'data'    => [
-                'ingredients_used' => $urgentItems->pluck('product_name'),
+                'ingredients_used' => $ingredientsToUse->pluck('product_name'),
                 'recipe'           => $recipe,
             ],
         ]);

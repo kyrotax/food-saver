@@ -1,17 +1,19 @@
-import axios, { AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
-import { useAuthStore } from '@features/auth/store/authStore';
+import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import { getToken, setToken, triggerUnauthorized } from '@core/auth/tokenStorage';
+
+import Constants from 'expo-constants';
 
 /**
  * Food Saver API Client
  * Axios instance pre-configured with:
- * - Base URL from Expo Constants
- * - Laravel Sanctum Bearer Token injection
+ * - Base URL pointing to the Laravel backend
+ * - Laravel Sanctum Bearer Token injection via tokenStorage (no circular dep)
  * - 15s timeout
  * - JSON content type
  */
 
-// const API_BASE_URL = 'https://vqhffv4oxa.sharedwithexpose.com/api'; // Expose tunnel (expired)
-const API_BASE_URL = 'http://192.168.1.4:8000/api'; // LAN — same Wi-Fi as dev machine
+// Use the dynamically configured IP from app.json (e.g. 192.168.1.4)
+const API_BASE_URL = Constants.expoConfig?.extra?.apiBaseUrl ?? 'http://192.168.1.4:8000/api';
 
 export const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -23,11 +25,12 @@ export const apiClient: AxiosInstance = axios.create({
 });
 
 /**
- * Request interceptor — injects Sanctum Bearer token from Zustand auth store.
+ * Request interceptor — injects Sanctum Bearer token from tokenStorage.
+ * tokenStorage is populated by authStore after login / bootstrap.
  */
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = useAuthStore.getState().token;
+    const token = getToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -38,13 +41,15 @@ apiClient.interceptors.request.use(
 
 /**
  * Response interceptor — handles global 401 Unauthenticated errors.
+ * Clears the in-memory token on session expiry.
  */
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Token expired or invalid — force logout
-      useAuthStore.getState().logout();
+      // Clear cached token and trigger subscriber to log out in authStore
+      setToken(null);
+      triggerUnauthorized();
     }
     return Promise.reject(error);
   }
@@ -53,8 +58,12 @@ apiClient.interceptors.response.use(
 /**
  * Helper for multipart/form-data uploads (receipt image scanning).
  */
-export async function uploadImage(endpoint: string, imageUri: string, extraFields?: Record<string, string>) {
-  const token = useAuthStore.getState().token;
+export async function uploadImage(
+  endpoint: string,
+  imageUri: string,
+  extraFields?: Record<string, string>
+) {
+  const token = getToken();
 
   const formData = new FormData();
   const filename = imageUri.split('/').pop() ?? 'receipt.jpg';
@@ -74,10 +83,9 @@ export async function uploadImage(endpoint: string, imageUri: string, extraField
 
   return axios.post(`${API_BASE_URL}${endpoint}`, formData, {
     headers: {
-      'Content-Type': 'multipart/form-data',
       'Authorization': `Bearer ${token}`,
       'Accept': 'application/json',
     },
-    timeout: 30000, // Longer timeout for OCR pipeline (NFR-02: ≤ 7s target)
+    timeout: 30000, // Longer timeout for OCR pipeline
   });
 }

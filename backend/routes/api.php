@@ -16,6 +16,13 @@ use Illuminate\Support\Facades\Route;
 */
 
 // ─── Public Routes (No auth required) ───────────────────────────────────────
+Route::get('/login', function () {
+    return response()->json([
+        'success' => false,
+        'message' => 'Unauthenticated. Please login first.',
+    ], 401);
+})->name('login');
+
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login',    [AuthController::class, 'login'])->middleware('throttle:10,1');
@@ -36,6 +43,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/check',         [InventoryController::class, 'fridgeCheck']);
         Route::post('/scan',         [InventoryController::class, 'scan'])->middleware(['privacy.filter', 'throttle:5,1']);
         Route::put('/{id}/slider',   [InventoryController::class, 'updateSlider']);
+        Route::put('/{id}',          [InventoryController::class, 'update']);
         Route::delete('/{id}',       [InventoryController::class, 'destroy']);
         Route::post('/',             [InventoryController::class, 'store']);
     });
